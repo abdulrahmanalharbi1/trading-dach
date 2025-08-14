@@ -1,0 +1,322 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <title>FX Fibo Ladder — Dashboard</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body{font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:#0b0c10;color:#e5e7eb;margin:0;padding:24px;line-height:1.5}
+    h1,h2,h3{margin:10px 0 8px}
+    h1{font-size:22px} h2{font-size:18px} h3{font-size:16px}
+    .card{background:#111827;border:1px solid #1f2937;border-radius:12px;padding:16px;margin-bottom:14px}
+    label{display:block;font-size:13px;margin:8px 0 4px}
+    input,select{width:100%;padding:8px 10px;border-radius:8px;border:1px solid #374151;background:#0f172a;color:#e5e7eb}
+    .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+    .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+    .row{display:flex;gap:8px;flex-wrap:wrap}
+    .btn{cursor:pointer;background:#2563eb;border:none;color:#fff;padding:10px 14px;border-radius:8px;font-weight:600}
+    .btn.secondary{background:#6b7280}
+    .btn.warn{background:#f59e0b}
+    .btn.danger{background:#ef4444}
+    .btn.ghost{background:#1f2937}
+    .tag{display:inline-block;border:1px solid #374151;background:#0f172a;color:#93c5fd;border-radius:999px;padding:3px 8px;margin:2px 3px;font-size:12px}
+    table{width:100%;border-collapse:collapse;margin-top:10px;font-size:13px}
+    th,td{border:1px solid #374151;padding:6px 8px;text-align:center}
+    th{background:#1f2937}
+    .ok{color:#22c55e} .warnTxt{color:#f59e0b} .bad{color:#ef4444}
+    small{color:#9ca3af}
+    .muted{color:#9ca3af}
+  </style>
+</head>
+<body>
+  <h1>لوحة سُلّم فيبو بالدولار — تقسيم عبر أيام</h1>
+
+  <div class="card">
+    <div class="grid3">
+      <div><label>الرصيد (Balance)</label><input type="number" id="balance" value="100000" step="1000"></div>
+      <div><label>الرافعة (Leverage)</label><input type="number" id="lev" value="10" step="1"></div>
+      <div><label>سعر الزوج (EURUSD≈1.10)</label><input type="number" id="price" value="1.10" step="0.0001"></div>
+
+      <div><label>المحاولة الحالية k (1..10)</label><input type="number" id="k" value="1" min="1" max="10"></div>
+      <div><label>b قيمة السُّلم بالدولار</label><input type="number" id="b" value="50" step="1"></div>
+      <div><label>الستوب (Pips)</label><input type="number" id="stop" value="6" step="0.1"></div>
+
+      <div><label>حد اليوم ٪</label><input type="number" id="daycapPct" value="1.9" step="0.1"></div>
+      <div><label>عدد الأجزاء M (اتركها فاضية للحساب تلقائي)</label><input type="number" id="M" placeholder="Auto" min="1"></div>
+      <div><label>Win Rate p (0.22..0.25)</label><input type="number" id="p" value="0.23" step="0.01" min="0" max="1"></div>
+
+      <div>
+        <label>قاعدة القرار</label>
+        <select id="rule">
+          <option value="majority" selected>الأغلبية (RESET إذا W ≥ ⌈M/2⌉)</option>
+          <option value="profit">(6W−M)·r ≥ 0</option>
+          <option value="clear">(6W−M)·r ≥ L_prev + T</option>
+        </select>
+      </div>
+      <div><label>T (للمسح)</label><input type="number" id="T" value="500" step="50"></div>
+      <div>
+        <label>ستوب 10pip تلقائيًا لـ k≥9</label>
+        <select id="autoStop">
+          <option value="on" selected>تشغيل</option>
+          <option value="off">إيقاف</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="row" style="margin-top:10px">
+      <button class="btn" onclick="compute()">احسب الآن</button>
+      <button class="btn secondary" onclick="preset100k()">Preset 100k</button>
+      <button class="btn secondary" onclick="preset50k()">Preset 50k</button>
+    </div>
+    <small class="muted">صفقة وحدة/اليوم. لا تتجاوز −1%..−1.5% يوميًا. OCO عند التفعيل.</small>
+  </div>
+
+  <div class="card">
+    <h2>التتبّع الحي للمحاولة</h2>
+    <div class="grid">
+      <div>
+        <div><span class="tag" id="tagFk"></span> <span class="tag" id="tagRk"></span> <span class="tag" id="tagLreq"></span></div>
+        <div><span class="tag" id="tagLotCap"></span> <span class="tag" id="tagDayCap"></span></div>
+        <div><span class="tag" id="tagMby"></span> <span class="tag" id="tagMfinal"></span> <span class="tag" id="tagRday"></span> <span class="tag" id="tagLotDay"></span></div>
+        <div id="safety"></div>
+      </div>
+      <div>
+        <div>W_needed (أغلبية) = <b id="WneededMaj"></b></div>
+        <div>P_reset@22% = <b id="P22"></b> • @25% = <b id="P25"></b> • @p = <b id="Pp"></b></div>
+        <div>L_prev = <b id="Lprev"></b> • W_needed للمسح = <b id="WneededClear"></b></div>
+      </div>
+    </div>
+
+    <div class="row" style="margin-top:8px">
+      <button class="btn" onclick="addOutcome(1)">+ Win ( +5r )</button>
+      <button class="btn danger" onclick="addOutcome(0)">+ Loss ( −r )</button>
+      <button class="btn ghost" onclick="undo()">تراجع</button>
+      <button class="btn warn" onclick="endAttempt()">انهِ المحاولة الآن</button>
+    </div>
+    <div style="margin-top:6px">
+      الحالة: k=<b id="stateK"></b> • جزء <b id="statePart"></b>/<b id="stateM"></b> • W=<b id="stateW"></b> L=<b id="stateL"></b> • صافي المحاولة: <b id="stateNet"></b> • صافي تراكمي: <b id="stateCum"></b>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>السجل اليومي</h2>
+    <div class="row">
+      <button class="btn secondary" onclick="exportCSV()">تحميل CSV</button>
+      <button class="btn secondary" onclick="copyCSV()">نسخ CSV</button>
+      <small class="muted">يحفظ: اليوم، k، M، الجزء، الستوب، r$، اللوت، النتيجة، قرار نهاية المحاولة، وصافي الحساب.</small>
+    </div>
+    <div id="logTable"></div>
+  </div>
+
+<script>
+function fib(n){ let a=1,b=1; if(n<=2) return 1; for(let i=3;i<=n;i++){ const c=a+b; a=b; b=c; } return b; }
+function sumRBefore(k,b){ let s=0; for(let j=1;j<k;j++){ s+= b*fib(j); } return s; }
+function binom(n,k){ if(k<0||k>n) return 0; if(k===0||k===n) return 1; k=Math.min(k,n-k); let r=1; for(let i=1;i<=k;i++){ r=r*(n-(k-i))/i; } return r; }
+function binomTail(n,p,kmin){ let s=0; for(let w=kmin;w<=n;w++){ s+= binom(n,w)*p**w*(1-p)**(n-w); } return s; }
+function fmt(x,d=2){ return (Math.round(x*10**d)/10**d).toFixed(d); }
+function todayStr(){ const d=new Date(); return d.toISOString().slice(0,10); }
+
+let state = {
+  day: 0, k: 1, M: 1, stop: 6, b: 50,
+  balance: 100000, lev: 10, price: 1.10, daycapPct: 1.9,
+  p: 0.23, rule: "majority", T: 500, autoStop: "on",
+  r: 50, lotDay: 0.5, part: 1, W:0, L:0, attemptNet:0, cumPnL:0,
+  Lprev:0, log: [], historyStack: []
+};
+
+function readInputs(){
+  const g = (id)=>document.getElementById(id).value;
+  state.balance = parseFloat(g('balance')||"100000");
+  state.lev = parseFloat(g('lev')||"10");
+  state.price = parseFloat(g('price')||"1.10");
+  state.k = parseInt(g('k')||"1");
+  state.b = parseFloat(g('b')||"50");
+  state.stop = parseFloat(g('stop')||"6");
+  state.daycapPct = parseFloat(g('daycapPct')||"1.9");
+  const Minput = parseInt(g('M')||"0");
+  state.rule = g('rule');
+  state.T = parseFloat(g('T')||"500");
+  state.p = parseFloat(g('p')||"0.23");
+  state.autoStop = g('autoStop');
+
+  if(state.autoStop==="on" && state.k>=9 && state.stop<10){ state.stop = 10; document.getElementById('stop').value = 10; }
+
+  const Fk = fib(state.k);
+  const Rk = state.b * Fk;
+  const pipVal = 10.0;
+  const Lreq = Rk / (state.stop * pipVal);
+  const lotCap = (state.balance * state.lev) / (state.price * 100000);
+  const M_by_lev = Math.max(1, Math.ceil(Lreq / lotCap));
+  const dayCap = state.daycapPct/100 * state.balance;
+  const M_by_day = Math.max(1, Math.ceil(Rk / dayCap));
+  state.M = (Minput && Minput>0) ? Minput : Math.max(M_by_lev, M_by_day);
+  state.r = Rk / state.M;
+  state.lotDay = Lreq / state.M;
+  state.Lprev = sumRBefore(state.k, state.b);
+
+  if(state.part>state.M){ state.part = 1; state.W=0; state.L=0; state.attemptNet=0; }
+
+  document.getElementById('tagFk').innerText = `Fk=${Fk}`;
+  document.getElementById('tagRk').innerText = `Rk=$${fmt(Rk)}`;
+  document.getElementById('tagLreq').innerText = `L_req=${fmt(Lreq)} لوت (دخول مرّة)`;
+  document.getElementById('tagLotCap').innerText = `سقف اللوت=${fmt(lotCap)} لوت/يوم`;
+  document.getElementById('tagDayCap').innerText = `حد اليوم=$${fmt(dayCap)}`;
+  document.getElementById('tagMby').innerText = `M_by_lev=${M_by_lev} • M_by_day=${M_by_day}`;
+  document.getElementById('tagMfinal').innerText = `M_final=${state.M}`;
+  document.getElementById('tagRday').innerText = `r/day=$${fmt(state.r)}`;
+  document.getElementById('tagLotDay').innerText = `Lot/day=${fmt(state.lotDay)}`;
+
+  const lotOK = state.lotDay <= lotCap + 1e-9;
+  const dayOK = state.r <= dayCap + 1e-9;
+  document.getElementById('safety').innerHTML =
+    `<div class="${lotOK?'ok':'bad'}">${lotOK?'اللوت/اليوم مسموح':'اللوت يتجاوز السقف — كبّر M أو ارفع الستوب'}</div>
+     <div class="${dayOK?'ok':'bad'}">${dayOK?'مسموحة':'تتجاوز حد اليوم — كبّر M'}</div>`;
+
+  const Wmaj = Math.ceil(state.M/2);
+  document.getElementById('WneededMaj').innerText = Wmaj;
+  document.getElementById('P22').innerText = (binomTail(state.M,0.22,Wmaj)*100).toFixed(1)+'%';
+  document.getElementById('P25').innerText = (binomTail(state.M,0.25,Wmaj)*100).toFixed(1)+'%';
+  document.getElementById('Pp').innerText  = (binomTail(state.M,state.p,Wmaj)*100).toFixed(1)+'%';
+
+  const W_clear = Math.max(0, Math.ceil( (state.Lprev + state.T)/(6*state.r) + (state.M/6) ));
+  document.getElementById('Lprev').innerText = '$'+fmt(state.Lprev);
+  document.getElementById('WneededClear').innerText = W_clear;
+
+  updateStateBar();
+}
+
+function updateStateBar(){
+  document.getElementById('stateK').innerText = state.k;
+  document.getElementById('stateM').innerText = state.M;
+  document.getElementById('statePart').innerText = state.part;
+  document.getElementById('stateW').innerText = state.W;
+  document.getElementById('stateL').innerText = state.L;
+  document.getElementById('stateNet').innerText = '$'+fmt(state.attemptNet);
+  document.getElementById('stateCum').innerText = '$'+fmt(state.cumPnL);
+}
+
+function compute(){ readInputs(); }
+
+function addOutcome(isWin){
+  readInputs();
+  const pnl = isWin ? 5*state.r : -state.r;
+  const outcome = isWin ? 'W' : 'L';
+  state.historyStack.push(JSON.stringify(state));
+
+  state.day += 1;
+  state.cumPnL += pnl;
+  if(isWin) state.W += 1; else state.L += 1;
+  state.attemptNet += pnl;
+
+  state.log.push({
+    date: todayStr(), day: state.day,
+    k: state.k, M: state.M, part: state.part, stop: state.stop,
+    r: state.r, lot: state.lotDay, outcome: outcome,
+    decision: '', cum: state.cumPnL
+  });
+
+  state.part += 1;
+  if(state.part > state.M){ endAttempt(true); }
+  renderLog();
+  updateStateBar();
+}
+
+function undo(){
+  if(state.historyStack.length===0) return;
+  const prev = JSON.parse(state.historyStack.pop());
+  state = prev;
+  state.log.pop();
+  renderLog();
+  updateStateBar();
+}
+
+function endAttempt(auto=false){
+  readInputs();
+  let decision = 'ESCALATE';
+  if(state.rule==='majority'){
+    if(state.W >= Math.ceil(state.M/2)) decision='RESET';
+  }else if(state.rule==='profit'){
+    if((6*state.W - state.M)*state.r >= 0) decision='RESET';
+  }else{
+    if((6*state.W - state.M)*state.r >= (state.Lprev + state.T)) decision='RESET';
+  }
+  for(let i=state.log.length-1;i>=0;i--){
+    if(state.log[i].k===state.k && state.log[i].decision===''){ state.log[i].decision = decision; break; }
+  }
+  if(decision==='RESET'){ state.k = 1; } else { state.k = Math.min(10, state.k + 1); }
+  state.part = 1; state.W=0; state.L=0; state.attemptNet=0;
+  readInputs();
+  renderLog();
+  if(!auto){ alert('تم إنهاء المحاولة: '+decision); }
+}
+
+function renderLog(){
+  if(state.log.length===0){ document.getElementById('logTable').innerHTML=''; return; }
+  let html = `<table><thead><tr>
+    <th>Day</th><th>Date</th><th>k</th><th>M</th><th>Part</th><th>Stop</th>
+    <th>r$</th><th>Lot</th><th>Outcome</th><th>Decision</th><th>Cum PnL$</th>
+  </tr></thead><tbody>`;
+  for(const r of state.log){
+    html += `<tr>
+      <td>${r.day}</td><td>${r.date}</td><td>${r.k}</td><td>${r.M}</td><td>${r.part}</td><td>${r.stop}</td>
+      <td>${fmt(r.r)}</td><td>${fmt(r.lot)}</td><td>${r.outcome}</td><td>${r.decision||''}</td><td>${fmt(r.cum)}</td>
+    </tr>`;
+  }
+  html += `</tbody></table>`;
+  document.getElementById('logTable').innerHTML = html;
+}
+
+function toCSV(){
+  const headers = ["Day","Date","k","M","Part","Stop","r$","Lot","Outcome","Decision","CumPnL$"];
+  const lines = [headers.join(',')];
+  for(const r of state.log){
+    lines.push([r.day,r.date,r.k,r.M,r.part,r.stop,fmt(r.r),fmt(r.lot),r.outcome,(r.decision||''),fmt(r.cum)].join(','));
+  }
+  return lines.join('\n');
+}
+function exportCSV(){
+  const csv = toCSV();
+  const a = document.createElement('a');
+  a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+  a.download = 'fx_fibo_log.csv';
+  a.click();
+}
+function copyCSV(){
+  const csv = toCSV();
+  navigator.clipboard.writeText(csv).then(()=>alert('تم نسخ CSV للحافظة')).catch(()=>alert('انسخ يدويًا'));
+}
+
+function preset100k(){
+  document.getElementById('balance').value = 100000;
+  document.getElementById('lev').value = 10;
+  document.getElementById('price').value = 1.10;
+  document.getElementById('daycapPct').value = 1.9;
+  document.getElementById('stop').value = 6;
+  document.getElementById('M').value = "";
+  document.getElementById('k').value = 1;
+  document.getElementById('autoStop').value = "on";
+  document.getElementById('rule').value = "majority";
+  document.getElementById('p').value = 0.23;
+  state.log=[]; state.historyStack=[]; state.day=0; state.cumPnL=0; state.part=1; state.W=0; state.L=0; state.attemptNet=0;
+  compute();
+}
+function preset50k(){
+  document.getElementById('balance').value = 50000;
+  document.getElementById('lev').value = 10;
+  document.getElementById('price').value = 1.10;
+  document.getElementById('daycapPct').value = 1.9;
+  document.getElementById('stop').value = 6;
+  document.getElementById('M').value = "";
+  document.getElementById('k').value = 8;
+  document.getElementById('autoStop').value = "off";
+  document.getElementById('rule').value = "clear";
+  document.getElementById('T').value = 500;
+  document.getElementById('p').value = 0.22;
+  state.log=[]; state.historyStack=[]; state.day=0; state.cumPnL=0; state.part=1; state.W=0; state.L=0; state.attemptNet=0;
+  compute();
+}
+
+window.addEventListener('load', ()=>{ compute(); renderLog(); });
+</script>
+</body>
+</html>
