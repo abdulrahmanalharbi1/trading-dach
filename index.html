@@ -2,321 +2,440 @@
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="utf-8" />
-  <title>FX Fibo Ladder — Dashboard</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Photon Architect — LC‑2A Coach · v3.2 (Integrated)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = { theme: { extend: { boxShadow: { soft: '0 8px 30px rgba(0,0,0,0.06)' } } } };
+  </script>
   <style>
-    body{font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:#0b0c10;color:#e5e7eb;margin:0;padding:24px;line-height:1.5}
-    h1,h2,h3{margin:10px 0 8px}
-    h1{font-size:22px} h2{font-size:18px} h3{font-size:16px}
-    .card{background:#111827;border:1px solid #1f2937;border-radius:12px;padding:16px;margin-bottom:14px}
-    label{display:block;font-size:13px;margin:8px 0 4px}
-    input,select{width:100%;padding:8px 10px;border-radius:8px;border:1px solid #374151;background:#0f172a;color:#e5e7eb}
-    .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
-    .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
-    .row{display:flex;gap:8px;flex-wrap:wrap}
-    .btn{cursor:pointer;background:#2563eb;border:none;color:#fff;padding:10px 14px;border-radius:8px;font-weight:600}
-    .btn.secondary{background:#6b7280}
-    .btn.warn{background:#f59e0b}
-    .btn.danger{background:#ef4444}
-    .btn.ghost{background:#1f2937}
-    .tag{display:inline-block;border:1px solid #374151;background:#0f172a;color:#93c5fd;border-radius:999px;padding:3px 8px;margin:2px 3px;font-size:12px}
-    table{width:100%;border-collapse:collapse;margin-top:10px;font-size:13px}
-    th,td{border:1px solid #374151;padding:6px 8px;text-align:center}
-    th{background:#1f2937}
-    .ok{color:#22c55e} .warnTxt{color:#f59e0b} .bad{color:#ef4444}
-    small{color:#9ca3af}
-    .muted{color:#9ca3af}
+    .card { @apply rounded-2xl border border-gray-200 shadow-soft bg-white; }
+    .kbd { @apply px-1.5 py-0.5 rounded border text-xs bg-gray-50; }
+    .tab-btn { @apply px-3 py-1.5 rounded-full border text-sm; }
+    .tab-active { @apply bg-black text-white border-black; }
   </style>
+  <!-- React 18 UMD -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 </head>
-<body>
-  <h1>لوحة سُلّم فيبو بالدولار — تقسيم عبر أيام</h1>
+<body class="bg-gray-50 min-h-screen antialiased">
+  <div id="app"></div>
 
-  <div class="card">
-    <div class="grid3">
-      <div><label>الرصيد (Balance)</label><input type="number" id="balance" value="100000" step="1000"></div>
-      <div><label>الرافعة (Leverage)</label><input type="number" id="lev" value="10" step="1"></div>
-      <div><label>سعر الزوج (EURUSD≈1.10)</label><input type="number" id="price" value="1.10" step="0.0001"></div>
+  <script type="text/babel">
+    const { useState, useEffect, useMemo } = React;
 
-      <div><label>المحاولة الحالية k (1..10)</label><input type="number" id="k" value="1" min="1" max="10"></div>
-      <div><label>b قيمة السُّلم بالدولار</label><input type="number" id="b" value="50" step="1"></div>
-      <div><label>الستوب (Pips)</label><input type="number" id="stop" value="6" step="0.1"></div>
+    /* ================== storage / utils ================== */
+    const LS = {
+      get: (k, def) => { try { const v = localStorage.getItem('photon_'+k); return v? JSON.parse(v): def; } catch { return def } },
+      set: (k, v) => localStorage.setItem('photon_'+k, JSON.stringify(v))
+    };
+    const fmt = (n)=> Number(n).toLocaleString(undefined,{maximumFractionDigits:2});
+    const FIB = [1,1,2,3,5,8,13,21,34,55,89];
 
-      <div><label>حد اليوم ٪</label><input type="number" id="daycapPct" value="1.9" step="0.1"></div>
-      <div><label>عدد الأجزاء M (اتركها فاضية للحساب تلقائي)</label><input type="number" id="M" placeholder="Auto" min="1"></div>
-      <div><label>Win Rate p (0.22..0.25)</label><input type="number" id="p" value="0.23" step="0.01" min="0" max="1"></div>
+    /* ================== i18n ================== */
+    const t = {
+      ar: {
+        lang:'EN', header:'Photon Architect — LC‑2A Coach', switchAcct:'تبديل الحساب',
+        tabs:{ phase:'Phase Helper', ladder:'Fibo Ladder', account:'الحساب', news:'الأخبار' },
+        // account
+        accountSummary:'ملخص الحساب', equity:'القيمة', baseRisk:'مخاطرة أساس', todayPL:'ربح/خسارة اليوم', totalPL:'إجمالي الربح/الخسارة',
+        // phase
+        phaseHelper:'Phase Helper', analyze:'حلّل', samples:'عيّنة', confidence:'الثقة', reasons:'الأسباب', guidance:'خطة التنفيذ', tactics:'توصيات الصفقة', upload:'ارفع',
+        // ladder
+        ladderTitle:'لوحة سُلّم فيبو بالدولار — تقسيم عبر أيّام', calc:'احسب الآن', preset100:'Preset 100k', preset50:'Preset 50k', win:'+ Win', loss:'+ Loss', reset:'Reset محاولة', clear:'مسح الحفظ',
+        balance:'الرصيد', lev:'الرافعة', price:'سعر الزوج', k:'المحاولة k', b:'قيمة b', stop:'ستوب (نقاط)', daycap:'حد اليوم ٪', M:'عدد الأجزاء M', part:'الجزء الحالي', W:'الأرباح W', L:'الخسائر L', rule:'قاعدة القرار', T:'هامش المسح T', p:'نسبة فوز p', autoStop:'تفعيل 10pip للـk≥9', on:'تشغيل', off:'إيقاف',
+        majority:'الأغلبية', profit:'ربحية موجبة', clearRule:'مسح السلسلة', outputs:'المخرجات الأساسية', lotCap:'سقف اللوت', dayCap:'حد اليوم', allowed:'مسموح', exceeded:'يتجاوز السقف', perPart:'لكل جزء', decision:'قرار نهاية المحاولة', nowDecision:'قرار لو انتهينا الآن', formulas:'الصيغ', tips:'تلميحات تشغيلية',
+        // news
+        news:'أخبار (تلقائي: اليوم + يومين)', setEndpoint:'رابط مزوّد الأخبار', syncNow:'مزامنة الآن', endpointHint:'ضع رابط JSON عام يدعم CORS. سنحفظه محليًا.'
+      },
+      en: {
+        lang:'ع', header:'Photon Architect — LC‑2A Coach', switchAcct:'Switch Account',
+        tabs:{ phase:'Phase Helper', ladder:'Fibo Ladder', account:'Account', news:'News' },
+        accountSummary:'Account Summary', equity:'Equity', baseRisk:'Base Risk', todayPL:'Today P/L', totalPL:'Total P/L',
+        phaseHelper:'Phase Helper', analyze:'Analyze', samples:'Sample', confidence:'Confidence', reasons:'Reasons', guidance:'Playbook', tactics:'Trade Recommendations', upload:'Upload',
+        ladderTitle:'$ Fibo Ladder — split by days', calc:'Compute', preset100:'Preset 100k', preset50:'Preset 50k', win:'+ Win', loss:'+ Loss', reset:'Reset attempt', clear:'Clear storage',
+        balance:'Balance', lev:'Leverage', price:'Pair price', k:'Attempt k', b:'b (ladder $)', stop:'Stop (pips)', daycap:'Day cap %', M:'Parts M', part:'Current part', W:'Wins so far', L:'Losses so far', rule:'Decision rule', T:'Clear margin T', p:'Win rate p', autoStop:'Force 10pip if k≥9', on:'On', off:'Off',
+        majority:'Majority', profit:'Profit>0', clearRule:'Clear chain', outputs:'Key outputs', lotCap:'Lot cap', dayCap:'Day cap', allowed:'allowed', exceeded:'exceeds cap', perPart:'per part', decision:'Attempt decision', nowDecision:'Decision if ended now', formulas:'Formulas', tips:'Operational tips',
+        news:'News (Auto: today + 2d)', setEndpoint:'News provider URL', syncNow:'Sync now', endpointHint:'Paste public CORS JSON; saved locally.'
+      }
+    };
 
-      <div>
-        <label>قاعدة القرار</label>
-        <select id="rule">
-          <option value="majority" selected>الأغلبية (RESET إذا W ≥ ⌈M/2⌉)</option>
-          <option value="profit">(6W−M)·r ≥ 0</option>
-          <option value="clear">(6W−M)·r ≥ L_prev + T</option>
-        </select>
+    /* ================== Accounts ================== */
+    const defaultAccounts = [ { id:'ftmo', name:'FTMO', equity:200000, baseRisk:50, rr:0, todayPL:0, totalPL:0 }, { id:'tff', name:'TFF', equity:100000, baseRisk:50, rr:0, todayPL:0, totalPL:0 } ];
+
+    function TopBar({lang,setLang,acct,setAcct,tab,setTab}){
+      const i = t[lang];
+      return (
+        <div className="w-full sticky top-0 z-50 backdrop-blur bg-white/70 border-b">
+          <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <button onClick={()=>setLang(lang==='ar'?'en':'ar')} className="px-3 py-1 rounded-full border bg-black text-white">{i.lang}</button>
+              <span className="text-xl font-semibold">{i.header}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button onClick={()=>setAcct(a=> a.id==='ftmo'? LS.get('accounts', defaultAccounts)[1] : LS.get('accounts', defaultAccounts)[0])} className="px-3 py-1 rounded-full border shadow-soft bg-white">{acct.name}</button>
+              <nav className="flex items-center gap-2">
+                {['phase','ladder','account','news'].map(k=> (
+                  <button key={k} className={`tab-btn ${tab===k? 'tab-active':''}`} onClick={()=>setTab(k)}>{i.tabs[k]}</button>
+                ))}
+              </nav>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    function AccountCard({lang,acct}){
+      const i = t[lang];
+      return (
+        <div className="card p-5">
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-semibold">{i.accountSummary} — {acct.name}</h3>
+            <div className="text-sm text-gray-400">{new Date().toLocaleString()}</div>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+            <Stat label={i.equity} value={'$'+fmt(acct.equity)} />
+            <Stat label={i.baseRisk} value={'$'+fmt(acct.baseRisk)} />
+            <Stat label={i.todayPL} value={'$'+fmt(acct.todayPL)} />
+            <Stat label={i.totalPL} value={'$'+fmt(acct.totalPL)} />
+          </div>
+        </div>
+      );
+    }
+    const Stat = ({label,value}) => (
+      <div className="p-4 rounded-xl bg-gray-50 border">
+        <div className="text-xs text-gray-500">{label}</div>
+        <div className="text-lg font-semibold mt-1">{value}</div>
       </div>
-      <div><label>T (للمسح)</label><input type="number" id="T" value="500" step="50"></div>
-      <div>
-        <label>ستوب 10pip تلقائيًا لـ k≥9</label>
-        <select id="autoStop">
-          <option value="on" selected>تشغيل</option>
-          <option value="off">إيقاف</option>
-        </select>
-      </div>
-    </div>
+    );
 
-    <div class="row" style="margin-top:10px">
-      <button class="btn" onclick="compute()">احسب الآن</button>
-      <button class="btn secondary" onclick="preset100k()">Preset 100k</button>
-      <button class="btn secondary" onclick="preset50k()">Preset 50k</button>
-    </div>
-    <small class="muted">صفقة وحدة/اليوم. لا تتجاوز −1%..−1.5% يوميًا. OCO عند التفعيل.</small>
-  </div>
+    /* ================== Phase Helper (v3.1 logic) ================== */
+    function evaluatePhase(input){
+      const reasons=[]; let score=0; let phase='RANGE';
+      const same = input.m15Swing === input.m15Internal;
+      const wellPriced = input.priced === 'good';
+      if(input.swingRange || input.internalRange){ phase='RANGE'; reasons.push('نطاق على السوينج/الداخلي'); score=30; }
+      else if(same){
+        if(input.iBOS && wellPriced && !input.oppLevels && input.postSwingBOS){ phase='A2'; score=92; reasons.push('Swing==Internal','i‑BOS','تسعير ممتاز','لا مستويات معاكسة','بعد Swing BOS'); }
+        else { phase='A'; score=75; reasons.push('Swing==Internal'); if(input.iBOS){ score+=6; reasons.push('i‑BOS يعزّز الاستمرارية'); } if(wellPriced){ score+=6; reasons.push('تسعير ملائم'); } if(input.oppLevels){ score-=10; reasons.push('مستويات معاكسة قريبة'); } }
+      } else {
+        if(input.htfAlign === input.m15Internal){ phase='C'; score=74; reasons.push('HTF متوافق مع Internal'); if(input.iBOS){ score+=6; reasons.push('أول i‑BOS'); } }
+        else { phase='B'; score=58; reasons.push('Swing مقابل Internal'); if(wellPriced){ score+=6; reasons.push('منطقة مُسعّرة جيدًا'); } }
+      }
+      if(input.htfAlign==='bear' && input.m15Swing==='bull' && input.m15Internal==='bull'){ reasons.push('HTF عكسي'); score-=8; }
+      score = Math.max(10, Math.min(95, score));
+      const guidance = buildPlaybook({phase, iBOS:input.iBOS, priced:wellPriced, htf:input.htfAlign});
+      const tactics = buildTactics({phase, priced:wellPriced, iBOS:input.iBOS});
+      return { phase, score, reasons, guidance, tactics };
+    }
+    function buildPlaybook(ctx){
+      const g=[];
+      if(['A','A2','C'].includes(ctx.phase)){
+        g.push('LC‑2A على M5 بعد POI على M15 (Fake Break → أمر Stop).');
+        g.push('الهدف الافتراضي 5R؛ خفّف عند سيولة قريبة.');
+      }
+      if(ctx.phase==='B') g.push('احتمال متوسط — انتظر i‑BOS أو تأكيد أقوى.');
+      if(ctx.phase==='D') g.push('تجنّب التنفيذ (عكسي).');
+      if(ctx.phase==='RANGE') g.push('انتظر خروج واضح أو سكالب صغير باتجاه Internal.');
+      if(ctx.iBOS) g.push('وجود i‑BOS يرفع الثقة.');
+      if(!ctx.priced) g.push('تسعير ضعيف → لا تتجاوز 3R أو انتظر إعادة تسعير.');
+      return g;
+    }
+    function buildTactics({phase, priced, iBOS}){
+      const T={
+        A:{entry:'M5 LC‑2A بعد Fake Break من POI (Buy/Sell Stop).', sl:'خلف ذيل التصفية + buffer.', tp:'5R (جزّئ 25% عند 3R).', manage:'تعادل بعد 2R/شمعة عكس ضعيفة.'},
+        A2:{entry:'بعد Swing BOS واستمرار Internal؛ LC‑2A سريع.', sl:'خلف آخر LQ.', tp:'5R ويمكن تمديد مع HTF.', manage:'تعزيز صغير بعد mitigation ناجح.'},
+        B:{entry:'عكسي من أقصى POI لانتهاء Pullback.', sl:'أوسع قليلاً.', tp:'3–5R.', manage:'خروج سريع عند رفض قوي.'},
+        C:{entry:'HTF مؤيّد + أول i‑BOS → LC‑2A أقرب POI.', sl:'وراء آخر LQ/Breaker.', tp:'5R (حتى 6–8R).', manage:'جزّئ 30% عند 3R ثم trail.'},
+        D:{entry:'لا دخول.', sl:'—', tp:'—', manage:'—'},
+        RANGE:{entry:'سكالب حواف النطاق بتأكيد واضح.', sl:'خارج النطاق بقليل.', tp:'1–3R.', manage:'خروج عند منتصف النطاق.'}
+      };
+      const base=T[phase]||T.D; const notes=[]; if(iBOS) notes.push('i‑BOS يدعم الاستمرارية.'); if(!priced) notes.push('تسعير غير ملائم—خفّض الهدف.');
+      return {...base, notes};
+    }
 
-  <div class="card">
-    <h2>التتبّع الحي للمحاولة</h2>
-    <div class="grid">
-      <div>
-        <div><span class="tag" id="tagFk"></span> <span class="tag" id="tagRk"></span> <span class="tag" id="tagLreq"></span></div>
-        <div><span class="tag" id="tagLotCap"></span> <span class="tag" id="tagDayCap"></span></div>
-        <div><span class="tag" id="tagMby"></span> <span class="tag" id="tagMfinal"></span> <span class="tag" id="tagRday"></span> <span class="tag" id="tagLotDay"></span></div>
-        <div id="safety"></div>
-      </div>
-      <div>
-        <div>W_needed (أغلبية) = <b id="WneededMaj"></b></div>
-        <div>P_reset@22% = <b id="P22"></b> • @25% = <b id="P25"></b> • @p = <b id="Pp"></b></div>
-        <div>L_prev = <b id="Lprev"></b> • W_needed للمسح = <b id="WneededClear"></b></div>
-      </div>
-    </div>
+    function PhaseHelperCard({lang}){
+      const i=t[lang];
+      const [img,setImg] = useState(null);
+      const [input,setInput] = useState(LS.get('phase_input',{ m15Swing:'bull', m15Internal:'bull', htfAlign:'bull', iBOS:false, priced:'good', oppLevels:false, swingRange:false, internalRange:false, postSwingBOS:false }));
+      const [result,setResult] = useState(LS.get('phase_result',null));
+      const run = ()=>{ const r=evaluatePhase(input); setResult(r); LS.set('phase_input',input); LS.set('phase_result',r); };
+      const sample=(k)=>{ const P={ A:{ m15Swing:'bull', m15Internal:'bull', htfAlign:'bull', iBOS:true, priced:'good', oppLevels:false, swingRange:false, internalRange:false, postSwingBOS:false }, A2:{ m15Swing:'bull', m15Internal:'bull', htfAlign:'bull', iBOS:true, priced:'good', oppLevels:false, swingRange:false, internalRange:false, postSwingBOS:true }, B:{ m15Swing:'bull', m15Internal:'bear', htfAlign:'bull', iBOS:false, priced:'good', oppLevels:true, swingRange:false, internalRange:false, postSwingBOS:false }, C:{ m15Swing:'bull', m15Internal:'bear', htfAlign:'bear', iBOS:true, priced:'good', oppLevels:false, swingRange:false, internalRange:false, postSwingBOS:false }, D:{ m15Swing:'bull', m15Internal:'bull', htfAlign:'bear', iBOS:false, priced:'bad', oppLevels:true, swingRange:false, internalRange:false, postSwingBOS:false }, R:{ m15Swing:'bull', m15Internal:'bull', htfAlign:'bull', iBOS:false, priced:'good', oppLevels:false, swingRange:true, internalRange:true, postSwingBOS:false } }; setInput(P[k]); setResult(null); };
+      const onFile=(e)=>{ const f=e.target.files?.[0]; if(!f) return; const r=new FileReader(); r.onload=()=>setImg(r.result); r.readAsDataURL(f); };
+      return (
+        <div className="card p-6">
+          <div className="flex items-center justify-between"><h3 className="text-2xl font-semibold">🧭 {i.phaseHelper}</h3><div className="flex gap-2 text-xs">{['A','A2','C','B','D','R'].map(k=> <button key={k} className="px-3 py-1 rounded-lg border" onClick={()=>sample(k)}>{i.samples} {k}</button>)}</div></div>
+          <div className="grid lg:grid-cols-3 gap-4 mt-4">
+            <div className="lg:col-span-1 space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                {Sel('M15 Swing','m15Swing',input,setInput)}
+                {Sel('M15 Internal','m15Internal',input,setInput)}
+                {Sel('HTF Align','htfAlign',input,setInput)}
+                {YesNo('i‑BOS','iBOS',input,setInput)}
+                {Opt('التسعير','priced',['good','bad'],input,setInput)}
+                {YesNo('مستويات معاكسة','oppLevels',input,setInput)}
+                {YesNo('Swing Range?','swingRange',input,setInput)}
+                {YesNo('Internal Range?','internalRange',input,setInput)}
+                {YesNo('بعد Swing BOS؟','postSwingBOS',input,setInput)}
+              </div>
+              <div className="flex gap-2"><button className="px-4 py-2 rounded-lg border bg-black text-white" onClick={run}>{i.analyze}</button><label className="px-3 py-2 rounded-lg border cursor-pointer">📷 {i.upload}<input onChange={onFile} type="file" accept="image/*" className="hidden"/></label></div>
+            </div>
+            <div className="lg:col-span-2 border rounded-xl p-4 bg-gray-50">
+              {!result? (<div className="text-gray-500 text-sm">—</div>) : (
+                <div className="space-y-4">
+                  <div className="flex items-end gap-4"><div className="text-3xl font-extrabold">{result.phase}</div><div className="text-gray-600">{i.confidence}: <span className="font-semibold">{result.score}%</span></div></div>
+                  <Block title={i.reasons}><ul className="list-disc pr-5 text-sm leading-7">{result.reasons.map((r,ix)=><li key={ix}>{r}</li>)}</ul></Block>
+                  <Block title={i.guidance}><ul className="list-disc pr-5 text-sm leading-7">{result.guidance.map((g,ix)=><li key={ix}>{g}</li>)}</ul></Block>
+                  <div className="card p-4"><div className="font-semibold mb-2">🧠 {i.tactics}</div><ul className="list-disc pr-5 text-sm leading-7"><li><b>Entry:</b> {result.tactics.entry}</li><li><b>SL:</b> {result.tactics.sl}</li><li><b>TP:</b> {result.tactics.tp}</li><li><b>Management:</b> {result.tactics.manage}</li>{(result.tactics.notes||[]).map((n,j)=>(<li key={j}>🔎 {n}</li>))}</ul></div>
+                  {img && <img alt="ref" src={img} className="w-full rounded-xl border"/>}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      );
+    }
+    const Block=({title,children})=>(<div><div className="text-sm text-gray-500 mb-1">{title}</div>{children}</div>);
+    function Sel(lbl,key,input,setInput){
+      return (
+        <label className="text-sm"><div className="mb-1 text-gray-500">{lbl}</div>
+          <select value={input[key]} onChange={e=>setInput({...input,[key]:e.target.value})} className="w-full border rounded-lg p-2">
+            <option value="bull">Bullish</option><option value="bear">Bearish</option>
+          </select>
+        </label>
+      )
+    }
+    function YesNo(lbl,key,input,setInput){
+      const v = !!input[key];
+      return (<label className="text-sm"><div className="mb-1 text-gray-500">{lbl}</div>
+        <select value={v?'yes':'no'} onChange={e=>setInput({...input,[key]: e.target.value==='yes'})} className="w-full border rounded-lg p-2"><option value="no">No</option><option value="yes">Yes</option></select>
+      </label>)
+    }
+    function Opt(lbl,key,opts,input,setInput){
+      return (<label className="text-sm"><div className="mb-1 text-gray-500">{lbl}</div>
+        <select value={input[key]} onChange={e=>setInput({...input,[key]: e.target.value})} className="w-full border rounded-lg p-2">{opts.map(o=> <option key={o} value={o}>{o}</option>)}</select>
+      </label>)
+    }
 
-    <div class="row" style="margin-top:8px">
-      <button class="btn" onclick="addOutcome(1)">+ Win ( +5r )</button>
-      <button class="btn danger" onclick="addOutcome(0)">+ Loss ( −r )</button>
-      <button class="btn ghost" onclick="undo()">تراجع</button>
-      <button class="btn warn" onclick="endAttempt()">انهِ المحاولة الآن</button>
-    </div>
-    <div style="margin-top:6px">
-      الحالة: k=<b id="stateK"></b> • جزء <b id="statePart"></b>/<b id="stateM"></b> • W=<b id="stateW"></b> L=<b id="stateL"></b> • صافي المحاولة: <b id="stateNet"></b> • صافي تراكمي: <b id="stateCum"></b>
-    </div>
-  </div>
+    /* ================== Ladder (integrated from your tool) ================== */
+    function fib(n){ let a=1,b=1; if(n<=2) return 1; for(let i=3;i<=n;i++){ const c=a+b; a=b; b=c; } return b; }
+    function sumRBefore(k,b){ let s=0; for(let j=1;j<k;j++){ s += b*fib(j); } return s; }
+    function binom(n,k){ if(k<0||k>n) return 0; if(k===0||k===n) return 1; k=Math.min(k,n-k); let r=1; for(let i=1;i<=k;i++){ r=r*(n-(k-i))/i; } return r; }
+    function binomTail(n,p,kmin){ if(n<=0) return 0; let s=0; for(let w=kmin; w<=n; w++){ s += binom(n,w)*p**w*(1-p)**(n-w); } return s; }
 
-  <div class="card">
-    <h2>السجل اليومي</h2>
-    <div class="row">
-      <button class="btn secondary" onclick="exportCSV()">تحميل CSV</button>
-      <button class="btn secondary" onclick="copyCSV()">نسخ CSV</button>
-      <small class="muted">يحفظ: اليوم، k، M، الجزء، الستوب، r$، اللوت، النتيجة، قرار نهاية المحاولة، وصافي الحساب.</small>
-    </div>
-    <div id="logTable"></div>
-  </div>
+    const LADDER_DEFAULT = { balance:100000, lev:10, price:1.10, k:7, b:50, stop:6, daycapPct:1.9, M:0, partIdx:1, winsSoFar:0, lossesSoFar:0, rule:'majority', T:500, p:0.23, autoStop:'on' };
 
-<script>
-function fib(n){ let a=1,b=1; if(n<=2) return 1; for(let i=3;i<=n;i++){ const c=a+b; a=b; b=c; } return b; }
-function sumRBefore(k,b){ let s=0; for(let j=1;j<k;j++){ s+= b*fib(j); } return s; }
-function binom(n,k){ if(k<0||k>n) return 0; if(k===0||k===n) return 1; k=Math.min(k,n-k); let r=1; for(let i=1;i<=k;i++){ r=r*(n-(k-i))/i; } return r; }
-function binomTail(n,p,kmin){ let s=0; for(let w=kmin;w<=n;w++){ s+= binom(n,w)*p**w*(1-p)**(n-w); } return s; }
-function fmt(x,d=2){ return (Math.round(x*10**d)/10**d).toFixed(d); }
-function todayStr(){ const d=new Date(); return d.toISOString().slice(0,10); }
+    function LadderCard({lang,acct,setAcct}){
+      const i=t[lang];
+      const [v,setV] = useState(LS.get('ladder', LADDER_DEFAULT));
+      useEffect(()=> LS.set('ladder', v), [v]);
 
-let state = {
-  day: 0, k: 1, M: 1, stop: 6, b: 50,
-  balance: 100000, lev: 10, price: 1.10, daycapPct: 1.9,
-  p: 0.23, rule: "majority", T: 500, autoStop: "on",
-  r: 50, lotDay: 0.5, part: 1, W:0, L:0, attemptNet:0, cumPnL:0,
-  Lprev:0, log: [], historyStack: []
-};
+      // autoStop enforcement
+      const stop = (v.autoStop==='on' && v.k>=9 && v.stop<10)? 10 : v.stop;
+      const Fk = fib(v.k);
+      const Rk = v.b * Fk;
+      const pipValuePerLot = 10.0; // USD-quoted approx
+      const L_req = Rk / (stop * pipValuePerLot);
+      const lotCap = (v.balance * v.lev) / (v.price * 100000);
+      const dayCap = v.daycapPct/100 * v.balance;
+      const M_by_lev = Math.max(1, Math.ceil(L_req / Math.max(1e-9, lotCap)));
+      const M_by_day = Math.max(1, Math.ceil(Rk / Math.max(1e-9, dayCap)));
+      const Mfinal = (v.M && v.M>0)? v.M: Math.max(M_by_lev, M_by_day);
+      const r = Rk / Mfinal;
+      const Lot_part = L_req / Mfinal;
+      const W_needed_majority = Math.ceil(Mfinal/2);
+      const W_needed_profit   = Math.floor(Mfinal/6)+1;
+      const L_prev = sumRBefore(v.k, v.b);
+      const W_needed_clear    = Math.max(0, Math.ceil((L_prev + v.T)/(6*r) + (Mfinal/6)));
+      const P_reset_maj_22 = binomTail(Mfinal, 0.22, W_needed_majority);
+      const P_reset_maj_25 = binomTail(Mfinal, 0.25, W_needed_majority);
+      const P_reset_maj_p  = binomTail(Mfinal, v.p,   W_needed_majority);
 
-function readInputs(){
-  const g = (id)=>document.getElementById(id).value;
-  state.balance = parseFloat(g('balance')||"100000");
-  state.lev = parseFloat(g('lev')||"10");
-  state.price = parseFloat(g('price')||"1.10");
-  state.k = parseInt(g('k')||"1");
-  state.b = parseFloat(g('b')||"50");
-  state.stop = parseFloat(g('stop')||"6");
-  state.daycapPct = parseFloat(g('daycapPct')||"1.9");
-  const Minput = parseInt(g('M')||"0");
-  state.rule = g('rule');
-  state.T = parseFloat(g('T')||"500");
-  state.p = parseFloat(g('p')||"0.23");
-  state.autoStop = g('autoStop');
+      const partsDone = v.winsSoFar + v.lossesSoFar;
+      const partsLeft = Math.max(0, Mfinal - partsDone);
+      const winsLeftToMajority = Math.max(0, W_needed_majority - v.winsSoFar);
+      const winsLeftToProfit   = Math.max(0, W_needed_profit   - v.winsSoFar);
+      const winsLeftToClear    = Math.max(0, W_needed_clear    - v.winsSoFar);
+      const lotOK = Lot_part <= lotCap + 1e-9;
+      const dayOK = r <= dayCap + 1e-9;
 
-  if(state.autoStop==="on" && state.k>=9 && state.stop<10){ state.stop = 10; document.getElementById('stop').value = 10; }
+      const decisionAtEnd = (ruleType, W)=> ruleType==='majority'? (W>=W_needed_majority?'RESET':'ESCALATE') : ruleType==='profit'? (((6*W - Mfinal)*r > 0)?'RESET':'ESCALATE') : (((6*W - Mfinal)*r >= (L_prev + v.T))?'RESET':'ESCALATE');
+      const decisionNowIfEnd = decisionAtEnd(v.rule, v.winsSoFar);
 
-  const Fk = fib(state.k);
-  const Rk = state.b * Fk;
-  const pipVal = 10.0;
-  const Lreq = Rk / (state.stop * pipVal);
-  const lotCap = (state.balance * state.lev) / (state.price * 100000);
-  const M_by_lev = Math.max(1, Math.ceil(Lreq / lotCap));
-  const dayCap = state.daycapPct/100 * state.balance;
-  const M_by_day = Math.max(1, Math.ceil(Rk / dayCap));
-  state.M = (Minput && Minput>0) ? Minput : Math.max(M_by_lev, M_by_day);
-  state.r = Rk / state.M;
-  state.lotDay = Lreq / state.M;
-  state.Lprev = sumRBefore(state.k, state.b);
+      function update(k,val){ setV(prev=> ({...prev, [k]:val})); }
+      function inc(k){ update(k, Math.max(0,(v[k]||0)+1)); }
+      function preset100(){ setV({...LADDER_DEFAULT, balance:100000, autoStop:'on', rule:'majority', p:0.23}); }
+      function preset50(){  setV({...LADDER_DEFAULT, balance:50000,  autoStop:'off', rule:'clear',    p:0.22}); }
 
-  if(state.part>state.M){ state.part = 1; state.W=0; state.L=0; state.attemptNet=0; }
+      return (
+        <div className="card p-6">
+          <h3 className="text-2xl font-semibold">🧮 {i.ladderTitle}</h3>
+          <div className="grid md:grid-cols-3 gap-3 mt-4">
+            {Num(i.balance,'balance',v,update,1000)}
+            {Num(i.lev,'lev',v,update,1)}
+            {Num(i.price,'price',v,update,0.0001)}
+            {Num(i.k,'k',v,update,1,1,10)}
+            {Num(i.b,'b',v,update,1)}
+            {Num(i.stop,'stop',v,update,0.1)}
+            {Num(i.daycap,'daycapPct',v,update,0.1)}
+            {Num(i.M,'M',v,update,1,1)}
+            {Num(i.part,'partIdx',v,update,1,1)}
+            {Num(i.W,'winsSoFar',v,update,1,0)}
+            {Num(i.L,'lossesSoFar',v,update,1,0)}
+            <label className="text-sm"><div className="mb-1 text-gray-500">{i.rule}</div>
+              <select className="w-full border rounded-lg p-2" value={v.rule} onChange={e=>update('rule', e.target.value)}>
+                <option value="majority">{i.majority} (W ≥ ⌈M/2⌉)</option>
+                <option value="profit">{i.profit} ((6W−M)·r &gt; 0)</option>
+                <option value="clear">{i.clearRule} ((6W−M)·r ≥ L_prev + T)</option>
+              </select>
+            </label>
+            {Num(i.T,'T',v,update,50)}
+            {Num(i.p,'p',v,update,0.01,0,1)}
+            <label className="text-sm"><div className="mb-1 text-gray-500">{i.autoStop}</div>
+              <select className="w-full border rounded-lg p-2" value={v.autoStop} onChange={e=>update('autoStop', e.target.value)}>
+                <option value="on">{i.on}</option>
+                <option value="off">{i.off}</option>
+              </select>
+            </label>
+          </div>
 
-  document.getElementById('tagFk').innerText = `Fk=${Fk}`;
-  document.getElementById('tagRk').innerText = `Rk=$${fmt(Rk)}`;
-  document.getElementById('tagLreq').innerText = `L_req=${fmt(Lreq)} لوت (دخول مرّة)`;
-  document.getElementById('tagLotCap').innerText = `سقف اللوت=${fmt(lotCap)} لوت/يوم`;
-  document.getElementById('tagDayCap').innerText = `حد اليوم=$${fmt(dayCap)}`;
-  document.getElementById('tagMby').innerText = `M_by_lev=${M_by_lev} • M_by_day=${M_by_day}`;
-  document.getElementById('tagMfinal').innerText = `M_final=${state.M}`;
-  document.getElementById('tagRday').innerText = `r/day=$${fmt(state.r)}`;
-  document.getElementById('tagLotDay').innerText = `Lot/day=${fmt(state.lotDay)}`;
+          <div className="flex flex-wrap gap-2 mt-3">
+            <button className="px-3 py-2 rounded-lg border bg-black text-white" onClick={()=>setV({...v})}>{i.calc}</button>
+            <button className="px-3 py-2 rounded-lg border" onClick={preset100}>{i.preset100}</button>
+            <button className="px-3 py-2 rounded-lg border" onClick={preset50}>{i.preset50}</button>
+            <button className="px-3 py-2 rounded-lg border" onClick={()=>inc('winsSoFar')}>{i.win}</button>
+            <button className="px-3 py-2 rounded-lg border" onClick={()=>inc('lossesSoFar')}>{i.loss}</button>
+            <button className="px-3 py-2 rounded-lg border" onClick={()=>setV(prev=>({...prev, winsSoFar:0, lossesSoFar:0, partIdx:1}))}>{i.reset}</button>
+            <button className="px-3 py-2 rounded-lg border" onClick={()=>{ localStorage.removeItem('photon_ladder'); setV(LADDER_DEFAULT); }}>{i.clear}</button>
+          </div>
 
-  const lotOK = state.lotDay <= lotCap + 1e-9;
-  const dayOK = state.r <= dayCap + 1e-9;
-  document.getElementById('safety').innerHTML =
-    `<div class="${lotOK?'ok':'bad'}">${lotOK?'اللوت/اليوم مسموح':'اللوت يتجاوز السقف — كبّر M أو ارفع الستوب'}</div>
-     <div class="${dayOK?'ok':'bad'}">${dayOK?'مسموحة':'تتجاوز حد اليوم — كبّر M'}</div>`;
+          <div className="card p-4 mt-4">
+            <h4 className="font-semibold mb-2">{i.outputs}</h4>
+            <div className="grid md:grid-cols-2 gap-3">
+              <div><span className="kbd">Fk={Fk}</span> <span className="kbd">Rk=${fmt(Rk)}</span> <span className="kbd">Lreq={fmt(L_req)}</span></div>
+              <div><span className="kbd">{i.lotCap}≈ {fmt(lotCap)}</span> <span className="kbd">{i.dayCap}≈ ${fmt(dayCap)}</span></div>
+            </div>
+            <div className="grid md:grid-cols-2 gap-3 mt-2">
+              <div><span className="kbd">M_lev={M_by_lev}</span> <span className="kbd">M_day={M_by_day}</span> <span className="kbd">M={Mfinal}</span></div>
+              <div><span className="kbd">r/{i.perPart}= ${fmt(r)}</span> <span className="kbd">Lot/{i.perPart}= {fmt(Lot_part)}</span></div>
+            </div>
+            <div className="grid md:grid-cols-2 gap-3 mt-2">
+              <div className={`${Lot_part<=lotCap? 'text-emerald-600':'text-rose-600'}`}>اللوت/{i.perPart} {Lot_part<=lotCap? i.allowed: i.exceeded}</div>
+              <div className={`${r<=dayCap? 'text-emerald-600':'text-rose-600'}`}>مخاطرة/{i.perPart} {r<=dayCap? i.allowed: i.exceeded}</div>
+            </div>
+            <details className="text-sm text-gray-600 mt-2"><summary>🧮 {i.formulas}</summary>
+              <div className="mt-2 space-y-1">
+                <div>Lreq = Rk / (stop × $10) = {fmt(Rk)} / ({fmt(stop)} × 10) = <b>{fmt(L_req)}</b></div>
+                <div>lotCap ≈ (balance × lev) / (price × 100k) = ({fmt(v.balance)}×{fmt(v.lev)}) / ({fmt(v.price)}×100000) = <b>{fmt(lotCap)}</b></div>
+                <div>dayCap = {fmt(v.daycapPct)}% × {fmt(v.balance)} = <b>${fmt(dayCap)}</b></div>
+                <div>M_lev = ceil(Lreq/lotCap) = ceil({fmt(L_req)}/{fmt(lotCap)}) = <b>{M_by_lev}</b></div>
+                <div>M_day = ceil(Rk/dayCap) = ceil({fmt(Rk)}/{fmt(dayCap)}) = <b>{M_by_day}</b></div>
+                <div>r = Rk/M = {fmt(Rk)}/{Mfinal} = <b>${fmt(r)}</b></div>
+                <div>Lot/{i.perPart} = Lreq/M = {fmt(L_req)}/{Mfinal} = <b>{fmt(Lot_part)}</b></div>
+              </div>
+            </details>
+          </div>
 
-  const Wmaj = Math.ceil(state.M/2);
-  document.getElementById('WneededMaj').innerText = Wmaj;
-  document.getElementById('P22').innerText = (binomTail(state.M,0.22,Wmaj)*100).toFixed(1)+'%';
-  document.getElementById('P25').innerText = (binomTail(state.M,0.25,Wmaj)*100).toFixed(1)+'%';
-  document.getElementById('Pp').innerText  = (binomTail(state.M,state.p,Wmaj)*100).toFixed(1)+'%';
+          <div className="card p-4 mt-4">
+            <h4 className="font-semibold mb-2">{i.decision}</h4>
+            <div className="grid md:grid-cols-3 gap-3 text-sm">
+              <div>
+                <div className="font-semibold">{i.majority}</div>
+                <div>W_needed = ⌈M/2⌉ = <b>{Math.ceil(Mfinal/2)}</b></div>
+                <div>P_reset@22% = <b>{(P_reset_maj_22*100).toFixed(1)}%</b></div>
+                <div>P_reset@25% = <b>{(P_reset_maj_25*100).toFixed(1)}%</b></div>
+                <div>P_reset@p={v.p} = <b>{(P_reset_maj_p*100).toFixed(1)}%</b></div>
+              </div>
+              <div>
+                <div className="font-semibold">{i.profit}</div>
+                <div>W_needed &gt; M/6 ⇒ <b>{Math.floor(Mfinal/6)+1}</b></div>
+                <div>صافي = (6W − M)·r</div>
+              </div>
+              <div>
+                <div className="font-semibold">{i.clearRule}</div>
+                <div>L_prev = ${fmt(L_prev)}</div>
+                <div>W_needed ≥ <b>{W_needed_clear}</b> لتحقيق (6W−M)·r ≥ L_prev + T</div>
+              </div>
+            </div>
+            <div className="mt-2 text-sm">المنجَز: W={v.winsSoFar}, L={v.lossesSoFar}, أجزاء متبقية={Math.max(0,Mfinal - (v.winsSoFar+v.lossesSoFar))}</div>
+            <div className="mt-1 text-sm">المتبقي للوصول: <span className="kbd">Maj:{winsLeftToMajority}</span> <span className="kbd">Profit:{winsLeftToProfit}</span> <span className="kbd">Clear:{winsLeftToClear}</span></div>
+            <div className="mt-2"><span className="kbd">{i.nowDecision}: <b>{decisionNowIfEnd}</b></span></div>
+          </div>
 
-  const W_clear = Math.max(0, Math.ceil( (state.Lprev + state.T)/(6*state.r) + (state.M/6) ));
-  document.getElementById('Lprev').innerText = '$'+fmt(state.Lprev);
-  document.getElementById('WneededClear').innerText = W_clear;
+          <div className="card p-4 mt-4">
+            <h4 className="font-semibold mb-2">{i.tips}</h4>
+            <ul className="list-disc pr-5 text-sm leading-7">
+              <li>100k: k=1..6 ⇒ M=1 (6pip). k=7..8 ⇒ M=2 (6pip). k=9 ⇒ M=2 (10pip). k=10 ⇒ M=4 (10pip).</li>
+              <li>الحد اليومي إرشادي ضمن تسلسل فيبو—التزم بقوانين الشركة.</li>
+              <li>OCO: إلغاء باقي الأوامر عند التفعيل.</li>
+            </ul>
+          </div>
+        </div>
+      );
+    }
 
-  updateStateBar();
-}
+    const Num = (label,key,v,update,step=1,min=null,max=null)=> (
+      <label className="text-sm"><div className="mb-1 text-gray-500">{label}</div>
+        <input type="number" step={step} min={min??undefined} max={max??undefined} value={v[key]} onChange={e=>{
+          const val = e.target.value===''? 0 : (step%1? parseFloat(e.target.value): parseInt(e.target.value));
+          update(key, Number.isFinite(val)? val: 0);
+        }} className="w-full border rounded-lg p-2"/>
+      </label>
+    );
 
-function updateStateBar(){
-  document.getElementById('stateK').innerText = state.k;
-  document.getElementById('stateM').innerText = state.M;
-  document.getElementById('statePart').innerText = state.part;
-  document.getElementById('stateW').innerText = state.W;
-  document.getElementById('stateL').innerText = state.L;
-  document.getElementById('stateNet').innerText = '$'+fmt(state.attemptNet);
-  document.getElementById('stateCum').innerText = '$'+fmt(state.cumPnL);
-}
+    /* ================== News (same as v3.1) ================== */
+    function NewsCard({lang}){
+      const i=t[lang];
+      const [endpoint,setEndpoint] = useState(LS.get('news_endpoint',''));
+      const [items,setItems] = useState([]);
+      const [status,setStatus] = useState('idle');
+      useEffect(()=>{ if(endpoint){ sync(); } else { seed(); } },[]);
+      function seed(){ const s=[ {title:'CPI (USD)', time:new Date().toISOString(), impact:'high'}, {title:'BoE Speech', time:new Date(Date.now()+86400000).toISOString(), impact:'med'}, {title:'NFP (USD)', time:new Date(Date.now()+2*86400000).toISOString(), impact:'high'} ]; setItems(s); }
+      async function sync(){ setStatus('loading'); try{ const url = withWindow(endpoint); const r = await fetch(url); const j = await r.json(); setItems(mapExternal(j)); setStatus('ok'); } catch(e){ seed(); setStatus('fallback'); } }
+      function withWindow(url){ const from=new Date(); from.setHours(0,0,0,0); const to=new Date(from.getTime()+3*86400000); const qs=`from=${from.toISOString()}&to=${to.toISOString()}&symbols=GBP,USD,JPY`; return url.includes('?')? `${url}&${qs}`:`${url}?${qs}`; }
+      function mapExternal(data){ const arr= Array.isArray(data)? data: (Array.isArray(data?.events)? data.events: []); return arr.map(ev=>({ title: ev.title||ev.text||ev.name||'Event', time: ev.time||ev.datetime||ev.when||new Date().toISOString(), impact: (ev.impact||ev.importance)>=3?'high':(ev.impact||ev.importance)>=2?'med':'low' })).sort((a,b)=> new Date(a.time)-new Date(b.time)); }
+      const badge=(imp)=>{ const map={low:'bg-green-100 text-green-700', med:'bg-orange-100 text-orange-700', high:'bg-red-100 text-red-700'}; const emoji={low:'🟢', med:'🟠', high:'🔴'}; return <span className={`px-2 py-0.5 rounded ${map[imp]}`}>{emoji[imp]} {imp}</span> };
+      return (
+        <div className="card p-5">
+          <div className="flex items-center justify-between"><h3 className="font-semibold">🗞️ {i.news}</h3><div className="flex items-center gap-2"><input className="border rounded-lg p-2 w-72" placeholder={i.setEndpoint} value={endpoint} onChange={e=>setEndpoint(e.target.value)} /><button className="px-3 py-2 rounded-lg border" onClick={()=>{ LS.set('news_endpoint', endpoint); sync(); }}>{i.syncNow}</button></div></div>
+          <div className="text-xs text-gray-500 mt-1">{i.endpointHint} {status==='fallback' && '— فشل الجلب، استخدمنا عيّنة محلية.'}</div>
+          <div className="mt-3 space-y-2 max-h-72 overflow-auto pr-1">
+            {items.map((it,idx)=> (
+              <div key={idx} className="flex items-center justify-between border rounded-xl p-3 bg-white">
+                <div className="flex items-center gap-3">{badge(it.impact)}<div><div className="font-medium">{it.title}</div><div className="text-xs text-gray-500">{new Date(it.time).toLocaleString()}</div></div></div>
+                <div className="text-2xl">{it.impact==='high'? '⚡': it.impact==='med'? '⚠️':'✅'}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
 
-function compute(){ readInputs(); }
+    /* ================== App ================== */
+    function App(){
+      const [lang,setLang] = useState(LS.get('lang','ar'));
+      useEffect(()=>{ document.documentElement.dir = lang==='ar'? 'rtl':'ltr'; LS.set('lang', lang); },[lang]);
+      const [accounts,setAccounts] = useState(LS.get('accounts', defaultAccounts));
+      const [acct,setAcct] = useState(LS.get('active_acct', accounts[0]));
+      useEffect(()=>{ LS.set('accounts', accounts); },[accounts]);
+      useEffect(()=>{ LS.set('active_acct', acct); },[acct]);
+      const [tab,setTab] = useState(LS.get('tab','phase'));
+      useEffect(()=> LS.set('tab', tab), [tab]);
 
-function addOutcome(isWin){
-  readInputs();
-  const pnl = isWin ? 5*state.r : -state.r;
-  const outcome = isWin ? 'W' : 'L';
-  state.historyStack.push(JSON.stringify(state));
+      return (
+        <div className="max-w-7xl mx-auto p-4 space-y-4">
+          <TopBar lang={lang} setLang={setLang} acct={acct} setAcct={setAcct} tab={tab} setTab={setTab}/>
+          {tab==='phase' && <PhaseHelperCard lang={lang}/>} 
+          {tab==='ladder' && <LadderCard lang={lang} acct={acct} setAcct={(a)=>{ setAcct(a); setAccounts(prev=> prev.map(x=> x.id===a.id? a: x)); }}/>} 
+          {tab==='account' && <AccountCard lang={lang} acct={acct}/>} 
+          {tab==='news' && <NewsCard lang={lang}/>} 
+          <footer className="text-center text-xs text-gray-400 py-8">© Photon Architect — LC‑2A Coach · v3.2 (Integrated)</footer>
+        </div>
+      );
+    }
 
-  state.day += 1;
-  state.cumPnL += pnl;
-  if(isWin) state.W += 1; else state.L += 1;
-  state.attemptNet += pnl;
-
-  state.log.push({
-    date: todayStr(), day: state.day,
-    k: state.k, M: state.M, part: state.part, stop: state.stop,
-    r: state.r, lot: state.lotDay, outcome: outcome,
-    decision: '', cum: state.cumPnL
-  });
-
-  state.part += 1;
-  if(state.part > state.M){ endAttempt(true); }
-  renderLog();
-  updateStateBar();
-}
-
-function undo(){
-  if(state.historyStack.length===0) return;
-  const prev = JSON.parse(state.historyStack.pop());
-  state = prev;
-  state.log.pop();
-  renderLog();
-  updateStateBar();
-}
-
-function endAttempt(auto=false){
-  readInputs();
-  let decision = 'ESCALATE';
-  if(state.rule==='majority'){
-    if(state.W >= Math.ceil(state.M/2)) decision='RESET';
-  }else if(state.rule==='profit'){
-    if((6*state.W - state.M)*state.r >= 0) decision='RESET';
-  }else{
-    if((6*state.W - state.M)*state.r >= (state.Lprev + state.T)) decision='RESET';
-  }
-  for(let i=state.log.length-1;i>=0;i--){
-    if(state.log[i].k===state.k && state.log[i].decision===''){ state.log[i].decision = decision; break; }
-  }
-  if(decision==='RESET'){ state.k = 1; } else { state.k = Math.min(10, state.k + 1); }
-  state.part = 1; state.W=0; state.L=0; state.attemptNet=0;
-  readInputs();
-  renderLog();
-  if(!auto){ alert('تم إنهاء المحاولة: '+decision); }
-}
-
-function renderLog(){
-  if(state.log.length===0){ document.getElementById('logTable').innerHTML=''; return; }
-  let html = `<table><thead><tr>
-    <th>Day</th><th>Date</th><th>k</th><th>M</th><th>Part</th><th>Stop</th>
-    <th>r$</th><th>Lot</th><th>Outcome</th><th>Decision</th><th>Cum PnL$</th>
-  </tr></thead><tbody>`;
-  for(const r of state.log){
-    html += `<tr>
-      <td>${r.day}</td><td>${r.date}</td><td>${r.k}</td><td>${r.M}</td><td>${r.part}</td><td>${r.stop}</td>
-      <td>${fmt(r.r)}</td><td>${fmt(r.lot)}</td><td>${r.outcome}</td><td>${r.decision||''}</td><td>${fmt(r.cum)}</td>
-    </tr>`;
-  }
-  html += `</tbody></table>`;
-  document.getElementById('logTable').innerHTML = html;
-}
-
-function toCSV(){
-  const headers = ["Day","Date","k","M","Part","Stop","r$","Lot","Outcome","Decision","CumPnL$"];
-  const lines = [headers.join(',')];
-  for(const r of state.log){
-    lines.push([r.day,r.date,r.k,r.M,r.part,r.stop,fmt(r.r),fmt(r.lot),r.outcome,(r.decision||''),fmt(r.cum)].join(','));
-  }
-  return lines.join('\n');
-}
-function exportCSV(){
-  const csv = toCSV();
-  const a = document.createElement('a');
-  a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
-  a.download = 'fx_fibo_log.csv';
-  a.click();
-}
-function copyCSV(){
-  const csv = toCSV();
-  navigator.clipboard.writeText(csv).then(()=>alert('تم نسخ CSV للحافظة')).catch(()=>alert('انسخ يدويًا'));
-}
-
-function preset100k(){
-  document.getElementById('balance').value = 100000;
-  document.getElementById('lev').value = 10;
-  document.getElementById('price').value = 1.10;
-  document.getElementById('daycapPct').value = 1.9;
-  document.getElementById('stop').value = 6;
-  document.getElementById('M').value = "";
-  document.getElementById('k').value = 1;
-  document.getElementById('autoStop').value = "on";
-  document.getElementById('rule').value = "majority";
-  document.getElementById('p').value = 0.23;
-  state.log=[]; state.historyStack=[]; state.day=0; state.cumPnL=0; state.part=1; state.W=0; state.L=0; state.attemptNet=0;
-  compute();
-}
-function preset50k(){
-  document.getElementById('balance').value = 50000;
-  document.getElementById('lev').value = 10;
-  document.getElementById('price').value = 1.10;
-  document.getElementById('daycapPct').value = 1.9;
-  document.getElementById('stop').value = 6;
-  document.getElementById('M').value = "";
-  document.getElementById('k').value = 8;
-  document.getElementById('autoStop').value = "off";
-  document.getElementById('rule').value = "clear";
-  document.getElementById('T').value = 500;
-  document.getElementById('p').value = 0.22;
-  state.log=[]; state.historyStack=[]; state.day=0; state.cumPnL=0; state.part=1; state.W=0; state.L=0; state.attemptNet=0;
-  compute();
-}
-
-window.addEventListener('load', ()=>{ compute(); renderLog(); });
-</script>
+    ReactDOM.createRoot(document.getElementById('app')).render(<App/>);
+  </script>
 </body>
 </html>
