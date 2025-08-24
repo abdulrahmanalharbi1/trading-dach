@@ -1,441 +1,700 @@
-<!doctype html>
-<html lang="ar" dir="rtl">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Photon Architect — LC‑2A Coach · v3.2 (Integrated)</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config = { theme: { extend: { boxShadow: { soft: '0 8px 30px rgba(0,0,0,0.06)' } } } };
-  </script>
-  <style>
-    .card { @apply rounded-2xl border border-gray-200 shadow-soft bg-white; }
-    .kbd { @apply px-1.5 py-0.5 rounded border text-xs bg-gray-50; }
-    .tab-btn { @apply px-3 py-1.5 rounded-full border text-sm; }
-    .tab-active { @apply bg-black text-white border-black; }
-  </style>
-  <!-- React 18 UMD -->
-  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-  <script crossorigin src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-</head>
-<body class="bg-gray-50 min-h-screen antialiased">
-  <div id="app"></div>
+import React, { useEffect, useMemo, useState } from "react";
+import {
+  LineChart, Line, BarChart, Bar, AreaChart, Area,
+  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, ScatterChart, Scatter, ZAxis
+} from "recharts";
 
-  <script type="text/babel">
-    const { useState, useEffect, useMemo } = React;
+/**
+ * Photon Options Dashboard — PRO Mock (Leader → Followers)
+ * نسخة متقدمة تجمع كل المتطلبات: Flow/Dealer · IV/Surface · Chains/Greeks · Trade · Risk · Journal · Observability
+ * تعقيد داخلي + واجهة بسيطة (نمط Apple)
+ *
+ * ⚠️ ملاحظة: هذا DEMO بدون ربط حقيقي — جاهز للتوصيل بمزوّدين (Polygon/Barchart/Hanweck/SpotGamma…)
+ * يوفّر نقاط ربط، حرس المخاطرة، Price/Drift Guards، وقياسات تشغيلية.
+ */
 
-    /* ================== storage / utils ================== */
-    const LS = {
-      get: (k, def) => { try { const v = localStorage.getItem('photon_'+k); return v? JSON.parse(v): def; } catch { return def } },
-      set: (k, v) => localStorage.setItem('photon_'+k, JSON.stringify(v))
-    };
-    const fmt = (n)=> Number(n).toLocaleString(undefined,{maximumFractionDigits:2});
-    const FIB = [1,1,2,3,5,8,13,21,34,55,89];
+// ===== Helpers =====
+const fmt = new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 });
+const pct = (x:number) => `${(x*100).toFixed(2)}%`;
+const now = () => new Date().toLocaleTimeString();
 
-    /* ================== i18n ================== */
-    const t = {
-      ar: {
-        lang:'EN', header:'Photon Architect — LC‑2A Coach', switchAcct:'تبديل الحساب',
-        tabs:{ phase:'Phase Helper', ladder:'Fibo Ladder', account:'الحساب', news:'الأخبار' },
-        // account
-        accountSummary:'ملخص الحساب', equity:'القيمة', baseRisk:'مخاطرة أساس', todayPL:'ربح/خسارة اليوم', totalPL:'إجمالي الربح/الخسارة',
-        // phase
-        phaseHelper:'Phase Helper', analyze:'حلّل', samples:'عيّنة', confidence:'الثقة', reasons:'الأسباب', guidance:'خطة التنفيذ', tactics:'توصيات الصفقة', upload:'ارفع',
-        // ladder
-        ladderTitle:'لوحة سُلّم فيبو بالدولار — تقسيم عبر أيّام', calc:'احسب الآن', preset100:'Preset 100k', preset50:'Preset 50k', win:'+ Win', loss:'+ Loss', reset:'Reset محاولة', clear:'مسح الحفظ',
-        balance:'الرصيد', lev:'الرافعة', price:'سعر الزوج', k:'المحاولة k', b:'قيمة b', stop:'ستوب (نقاط)', daycap:'حد اليوم ٪', M:'عدد الأجزاء M', part:'الجزء الحالي', W:'الأرباح W', L:'الخسائر L', rule:'قاعدة القرار', T:'هامش المسح T', p:'نسبة فوز p', autoStop:'تفعيل 10pip للـk≥9', on:'تشغيل', off:'إيقاف',
-        majority:'الأغلبية', profit:'ربحية موجبة', clearRule:'مسح السلسلة', outputs:'المخرجات الأساسية', lotCap:'سقف اللوت', dayCap:'حد اليوم', allowed:'مسموح', exceeded:'يتجاوز السقف', perPart:'لكل جزء', decision:'قرار نهاية المحاولة', nowDecision:'قرار لو انتهينا الآن', formulas:'الصيغ', tips:'تلميحات تشغيلية',
-        // news
-        news:'أخبار (تلقائي: اليوم + يومين)', setEndpoint:'رابط مزوّد الأخبار', syncNow:'مزامنة الآن', endpointHint:'ضع رابط JSON عام يدعم CORS. سنحفظه محليًا.'
-      },
-      en: {
-        lang:'ع', header:'Photon Architect — LC‑2A Coach', switchAcct:'Switch Account',
-        tabs:{ phase:'Phase Helper', ladder:'Fibo Ladder', account:'Account', news:'News' },
-        accountSummary:'Account Summary', equity:'Equity', baseRisk:'Base Risk', todayPL:'Today P/L', totalPL:'Total P/L',
-        phaseHelper:'Phase Helper', analyze:'Analyze', samples:'Sample', confidence:'Confidence', reasons:'Reasons', guidance:'Playbook', tactics:'Trade Recommendations', upload:'Upload',
-        ladderTitle:'$ Fibo Ladder — split by days', calc:'Compute', preset100:'Preset 100k', preset50:'Preset 50k', win:'+ Win', loss:'+ Loss', reset:'Reset attempt', clear:'Clear storage',
-        balance:'Balance', lev:'Leverage', price:'Pair price', k:'Attempt k', b:'b (ladder $)', stop:'Stop (pips)', daycap:'Day cap %', M:'Parts M', part:'Current part', W:'Wins so far', L:'Losses so far', rule:'Decision rule', T:'Clear margin T', p:'Win rate p', autoStop:'Force 10pip if k≥9', on:'On', off:'Off',
-        majority:'Majority', profit:'Profit>0', clearRule:'Clear chain', outputs:'Key outputs', lotCap:'Lot cap', dayCap:'Day cap', allowed:'allowed', exceeded:'exceeds cap', perPart:'per part', decision:'Attempt decision', nowDecision:'Decision if ended now', formulas:'Formulas', tips:'Operational tips',
-        news:'News (Auto: today + 2d)', setEndpoint:'News provider URL', syncNow:'Sync now', endpointHint:'Paste public CORS JSON; saved locally.'
-      }
-    };
+// ===== Default Risk (من خطتك) =====
+const DEFAULT_RISK = {
+  unit: 266,
+  fib_steps: [1,1,2,3,5,8,13,21,34,55],
+  target_R: 5,
+  daily_cap_step_max: { x1_0: 8, x1_25: 8, x1_5: 7 },
+  loss_limits: { daily_pct: 0.054, weekly_pct: 0.108 },
+  profit_withdraw_pct: 0.15,
+  price_tolerance_pct: 0.006,   // 0.6%
+  slippage_max_pct: 0.008,      // 0.8%
+  cool_down_on_2_losses_min: 60
+};
 
-    /* ================== Accounts ================== */
-    const defaultAccounts = [ { id:'ftmo', name:'FTMO', equity:200000, baseRisk:50, rr:0, todayPL:0, totalPL:0 }, { id:'tff', name:'TFF', equity:100000, baseRisk:50, rr:0, todayPL:0, totalPL:0 } ];
+// ===== Demo Accounts =====
+const DEFAULT_ACCOUNTS = [
+  { id: "A", name: "محفظة A", equity: 100000, pnlDay: 3200 },
+  { id: "B", name: "محفظة B", equity: 80000,  pnlDay: -1500 },
+  { id: "C", name: "محفظة C", equity: 60000,  pnlDay: 2200 },
+  { id: "D", name: "محفظة D", equity: 120000, pnlDay: 4800 },
+  { id: "E", name: "محفظة E", equity: 50000,  pnlDay: -800 }
+];
 
-    function TopBar({lang,setLang,acct,setAcct,tab,setTab}){
-      const i = t[lang];
-      return (
-        <div className="w-full sticky top-0 z-50 backdrop-blur bg-white/70 border-b">
-          <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <button onClick={()=>setLang(lang==='ar'?'en':'ar')} className="px-3 py-1 rounded-full border bg-black text-white">{i.lang}</button>
-              <span className="text-xl font-semibold">{i.header}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <button onClick={()=>setAcct(a=> a.id==='ftmo'? LS.get('accounts', defaultAccounts)[1] : LS.get('accounts', defaultAccounts)[0])} className="px-3 py-1 rounded-full border shadow-soft bg-white">{acct.name}</button>
-              <nav className="flex items-center gap-2">
-                {['phase','ladder','account','news'].map(k=> (
-                  <button key={k} className={`tab-btn ${tab===k? 'tab-active':''}`} onClick={()=>setTab(k)}>{i.tabs[k]}</button>
-                ))}
-              </nav>
-            </div>
-          </div>
-        </div>
-      );
-    }
+// ===== Demo Data Providers (مفاتيح) =====
+const DEFAULT_PROVIDERS = {
+  polygon: { enabled: true, apiKey: "pk_demo_xxx" },
+  barchart: { enabled: true, apiKey: "bc_demo_xxx" },
+  hanweck: { enabled: false, apiKey: "" },
+  spotgamma: { enabled: true, apiKey: "sg_demo_xxx" },
+  tier1alpha: { enabled: false, apiKey: "" },
+};
 
-    function AccountCard({lang,acct}){
-      const i = t[lang];
-      return (
-        <div className="card p-5">
-          <div className="flex items-center justify-between">
-            <h3 className="text-lg font-semibold">{i.accountSummary} — {acct.name}</h3>
-            <div className="text-sm text-gray-400">{new Date().toLocaleString()}</div>
-          </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
-            <Stat label={i.equity} value={'$'+fmt(acct.equity)} />
-            <Stat label={i.baseRisk} value={'$'+fmt(acct.baseRisk)} />
-            <Stat label={i.todayPL} value={'$'+fmt(acct.todayPL)} />
-            <Stat label={i.totalPL} value={'$'+fmt(acct.totalPL)} />
-          </div>
-        </div>
-      );
-    }
-    const Stat = ({label,value}) => (
-      <div className="p-4 rounded-xl bg-gray-50 border">
-        <div className="text-xs text-gray-500">{label}</div>
-        <div className="text-lg font-semibold mt-1">{value}</div>
+// ===== Demo Flow/GEX/IV/Chains =====
+const demoFlows = [
+  { ts: "09:45:11", type: "SWEEP",  symbol: "NVDA", side: "CALL",  size: 1500, prem: 1_250_000, delta: 0.38, note: "Agg Ask" },
+  { ts: "10:02:07", type: "BLOCK",  symbol: "AAPL", side: "PUT",   size: 2200, prem: 980_000,  delta: -0.32, note: "Hedge?" },
+  { ts: "10:14:33", type: "SWEEP",  symbol: "TSLA", side: "CALL",  size: 900,  prem: 720_000,  delta: 0.42, note: "Multi-exch" },
+  { ts: "10:31:18", type: "BLOCK",  symbol: "AMZN", side: "CALL",  size: 1200, prem: 1_100_000,delta: 0.36, note: "LT DTE" },
+];
+
+const demoGEX = [
+  { strike: 450, gex: -1.2 }, { strike: 455, gex: -0.8 }, { strike: 460, gex: -0.2 }, { strike: 465, gex: 0.4 },
+  { strike: 470, gex: 1.0 },  { strike: 475, gex: 1.8 },  { strike: 480, gex: 2.6 },  { strike: 485, gex: 1.1 }
+];
+
+const demoTerm = [
+  { dte: "0DTE", iv: 0.34 }, { dte: "1D", iv: 0.31 }, { dte: "2D", iv: 0.29 }, { dte: "1W", iv: 0.27 }, { dte: "2W", iv: 0.26 }, { dte: "1M", iv: 0.25 }
+];
+
+const demoSurface = [
+  // strike × maturity (تبسيط: جدول)
+  { strike: 450, m0: 0.34, m1: 0.31, m2: 0.29, w1: 0.27, w2: 0.26, mth1: 0.25 },
+  { strike: 460, m0: 0.35, m1: 0.32, m2: 0.30, w1: 0.28, w2: 0.27, mth1: 0.26 },
+  { strike: 470, m0: 0.33, m1: 0.30, m2: 0.28, w1: 0.26, w2: 0.25, mth1: 0.24 },
+  { strike: 480, m0: 0.31, m1: 0.29, m2: 0.27, w1: 0.25, w2: 0.24, mth1: 0.23 },
+];
+
+const demoChain = Array.from({length: 14}).map((_,i)=>{
+  const strike = 450 + i*5; const iv = 0.28 + Math.sin(i/2)/50; const delta = Math.max(0, Math.min(1, 0.6 - i*0.04));
+  return {
+    strike,
+    bid: +(2 + Math.max(0,5-i)*0.4).toFixed(2),
+    ask: +(2.15 + Math.max(0,5-i)*0.4).toFixed(2),
+    vol: Math.floor(500 + Math.random()*3000),
+    oi: Math.floor(1000 + Math.random()*8000),
+    iv: +(iv).toFixed(3),
+    delta: +(delta).toFixed(2), gamma: +(delta*(1-delta)/50).toFixed(3), theta: -+(0.02 + i*0.001).toFixed(3), vega: +(0.08 - i*0.002).toFixed(3)
+  };
+});
+
+// ===== Core UI Helpers =====
+const Badge: React.FC<{text: string; tone?: "green"|"red"|"blue"|"gray"|"yellow"}> = ({text, tone="gray"}) => {
+  const map:any = { green: "bg-green-50 text-green-700 border-green-200", red: "bg-red-50 text-red-700 border-red-200", blue: "bg-blue-50 text-blue-700 border-blue-200", gray: "bg-gray-50 text-gray-600 border-gray-200", yellow: "bg-yellow-50 text-yellow-700 border-yellow-200" };
+  return <span className={`text-xs px-2 py-1 rounded-full border ${map[tone]}`}>{text}</span>
+};
+
+const Card: React.FC<{title?: string; children: React.ReactNode; className?: string; right?: React.ReactNode;}> = ({title, children, className, right}) => (
+  <div className={`rounded-2xl border border-gray-200 shadow-sm bg-white p-4 ${className||""}`}>
+    {(title || right) && (
+      <div className="flex items-center justify-between mb-2">
+        {title && <h3 className="text-sm font-semibold text-gray-700">{title}</h3>}
+        {right}
       </div>
-    );
+    )}
+    {children}
+  </div>
+);
 
-    /* ================== Phase Helper (v3.1 logic) ================== */
-    function evaluatePhase(input){
-      const reasons=[]; let score=0; let phase='RANGE';
-      const same = input.m15Swing === input.m15Internal;
-      const wellPriced = input.priced === 'good';
-      if(input.swingRange || input.internalRange){ phase='RANGE'; reasons.push('نطاق على السوينج/الداخلي'); score=30; }
-      else if(same){
-        if(input.iBOS && wellPriced && !input.oppLevels && input.postSwingBOS){ phase='A2'; score=92; reasons.push('Swing==Internal','i‑BOS','تسعير ممتاز','لا مستويات معاكسة','بعد Swing BOS'); }
-        else { phase='A'; score=75; reasons.push('Swing==Internal'); if(input.iBOS){ score+=6; reasons.push('i‑BOS يعزّز الاستمرارية'); } if(wellPriced){ score+=6; reasons.push('تسعير ملائم'); } if(input.oppLevels){ score-=10; reasons.push('مستويات معاكسة قريبة'); } }
-      } else {
-        if(input.htfAlign === input.m15Internal){ phase='C'; score=74; reasons.push('HTF متوافق مع Internal'); if(input.iBOS){ score+=6; reasons.push('أول i‑BOS'); } }
-        else { phase='B'; score=58; reasons.push('Swing مقابل Internal'); if(wellPriced){ score+=6; reasons.push('منطقة مُسعّرة جيدًا'); } }
-      }
-      if(input.htfAlign==='bear' && input.m15Swing==='bull' && input.m15Internal==='bull'){ reasons.push('HTF عكسي'); score-=8; }
-      score = Math.max(10, Math.min(95, score));
-      const guidance = buildPlaybook({phase, iBOS:input.iBOS, priced:wellPriced, htf:input.htfAlign});
-      const tactics = buildTactics({phase, priced:wellPriced, iBOS:input.iBOS});
-      return { phase, score, reasons, guidance, tactics };
-    }
-    function buildPlaybook(ctx){
-      const g=[];
-      if(['A','A2','C'].includes(ctx.phase)){
-        g.push('LC‑2A على M5 بعد POI على M15 (Fake Break → أمر Stop).');
-        g.push('الهدف الافتراضي 5R؛ خفّف عند سيولة قريبة.');
-      }
-      if(ctx.phase==='B') g.push('احتمال متوسط — انتظر i‑BOS أو تأكيد أقوى.');
-      if(ctx.phase==='D') g.push('تجنّب التنفيذ (عكسي).');
-      if(ctx.phase==='RANGE') g.push('انتظر خروج واضح أو سكالب صغير باتجاه Internal.');
-      if(ctx.iBOS) g.push('وجود i‑BOS يرفع الثقة.');
-      if(!ctx.priced) g.push('تسعير ضعيف → لا تتجاوز 3R أو انتظر إعادة تسعير.');
-      return g;
-    }
-    function buildTactics({phase, priced, iBOS}){
-      const T={
-        A:{entry:'M5 LC‑2A بعد Fake Break من POI (Buy/Sell Stop).', sl:'خلف ذيل التصفية + buffer.', tp:'5R (جزّئ 25% عند 3R).', manage:'تعادل بعد 2R/شمعة عكس ضعيفة.'},
-        A2:{entry:'بعد Swing BOS واستمرار Internal؛ LC‑2A سريع.', sl:'خلف آخر LQ.', tp:'5R ويمكن تمديد مع HTF.', manage:'تعزيز صغير بعد mitigation ناجح.'},
-        B:{entry:'عكسي من أقصى POI لانتهاء Pullback.', sl:'أوسع قليلاً.', tp:'3–5R.', manage:'خروج سريع عند رفض قوي.'},
-        C:{entry:'HTF مؤيّد + أول i‑BOS → LC‑2A أقرب POI.', sl:'وراء آخر LQ/Breaker.', tp:'5R (حتى 6–8R).', manage:'جزّئ 30% عند 3R ثم trail.'},
-        D:{entry:'لا دخول.', sl:'—', tp:'—', manage:'—'},
-        RANGE:{entry:'سكالب حواف النطاق بتأكيد واضح.', sl:'خارج النطاق بقليل.', tp:'1–3R.', manage:'خروج عند منتصف النطاق.'}
-      };
-      const base=T[phase]||T.D; const notes=[]; if(iBOS) notes.push('i‑BOS يدعم الاستمرارية.'); if(!priced) notes.push('تسعير غير ملائم—خفّض الهدف.');
-      return {...base, notes};
-    }
+const KP: React.FC<{label:string; value:string; tone?:'green'|'red'|'gray'; hint?:string}> = ({label, value, tone='gray', hint}) => (
+  <div className={`p-3 rounded-xl border ${tone==='green'? 'border-green-200 bg-green-50': tone==='red'? 'border-red-200 bg-red-50':'border-gray-200 bg-gray-50'}`}>
+    <div className="text-xs text-gray-600">{label}</div>
+    <div className="text-lg font-semibold">{value}</div>
+    {hint && <div className="text-[10px] text-gray-500 mt-1">{hint}</div>}
+  </div>
+);
 
-    function PhaseHelperCard({lang}){
-      const i=t[lang];
-      const [img,setImg] = useState(null);
-      const [input,setInput] = useState(LS.get('phase_input',{ m15Swing:'bull', m15Internal:'bull', htfAlign:'bull', iBOS:false, priced:'good', oppLevels:false, swingRange:false, internalRange:false, postSwingBOS:false }));
-      const [result,setResult] = useState(LS.get('phase_result',null));
-      const run = ()=>{ const r=evaluatePhase(input); setResult(r); LS.set('phase_input',input); LS.set('phase_result',r); };
-      const sample=(k)=>{ const P={ A:{ m15Swing:'bull', m15Internal:'bull', htfAlign:'bull', iBOS:true, priced:'good', oppLevels:false, swingRange:false, internalRange:false, postSwingBOS:false }, A2:{ m15Swing:'bull', m15Internal:'bull', htfAlign:'bull', iBOS:true, priced:'good', oppLevels:false, swingRange:false, internalRange:false, postSwingBOS:true }, B:{ m15Swing:'bull', m15Internal:'bear', htfAlign:'bull', iBOS:false, priced:'good', oppLevels:true, swingRange:false, internalRange:false, postSwingBOS:false }, C:{ m15Swing:'bull', m15Internal:'bear', htfAlign:'bear', iBOS:true, priced:'good', oppLevels:false, swingRange:false, internalRange:false, postSwingBOS:false }, D:{ m15Swing:'bull', m15Internal:'bull', htfAlign:'bear', iBOS:false, priced:'bad', oppLevels:true, swingRange:false, internalRange:false, postSwingBOS:false }, R:{ m15Swing:'bull', m15Internal:'bull', htfAlign:'bull', iBOS:false, priced:'good', oppLevels:false, swingRange:true, internalRange:true, postSwingBOS:false } }; setInput(P[k]); setResult(null); };
-      const onFile=(e)=>{ const f=e.target.files?.[0]; if(!f) return; const r=new FileReader(); r.onload=()=>setImg(r.result); r.readAsDataURL(f); };
-      return (
-        <div className="card p-6">
-          <div className="flex items-center justify-between"><h3 className="text-2xl font-semibold">🧭 {i.phaseHelper}</h3><div className="flex gap-2 text-xs">{['A','A2','C','B','D','R'].map(k=> <button key={k} className="px-3 py-1 rounded-lg border" onClick={()=>sample(k)}>{i.samples} {k}</button>)}</div></div>
-          <div className="grid lg:grid-cols-3 gap-4 mt-4">
-            <div className="lg:col-span-1 space-y-3">
-              <div className="grid grid-cols-2 gap-3">
-                {Sel('M15 Swing','m15Swing',input,setInput)}
-                {Sel('M15 Internal','m15Internal',input,setInput)}
-                {Sel('HTF Align','htfAlign',input,setInput)}
-                {YesNo('i‑BOS','iBOS',input,setInput)}
-                {Opt('التسعير','priced',['good','bad'],input,setInput)}
-                {YesNo('مستويات معاكسة','oppLevels',input,setInput)}
-                {YesNo('Swing Range?','swingRange',input,setInput)}
-                {YesNo('Internal Range?','internalRange',input,setInput)}
-                {YesNo('بعد Swing BOS؟','postSwingBOS',input,setInput)}
-              </div>
-              <div className="flex gap-2"><button className="px-4 py-2 rounded-lg border bg-black text-white" onClick={run}>{i.analyze}</button><label className="px-3 py-2 rounded-lg border cursor-pointer">📷 {i.upload}<input onChange={onFile} type="file" accept="image/*" className="hidden"/></label></div>
+const Labeled: React.FC<{label:string; children:React.ReactNode}> = ({label, children}) => (
+  <label className="text-xs text-gray-600 grid gap-1">{label}{children}</label>
+);
+
+// ===== Main App =====
+export default function App(){
+  const [tab, setTab] = useState<'overview'|'flow'|'iv'|'chains'|'trade'|'risk'|'journal'|'obs'>("overview");
+  const [risk, setRisk] = useState(DEFAULT_RISK);
+  const [accounts, setAccounts] = useState(DEFAULT_ACCOUNTS);
+  const [providers, setProviders] = useState(DEFAULT_PROVIDERS as any);
+  const [boost, setBoost] = useState<1|1.25|1.5>(1);
+  const [tryIndex, setTryIndex] = useState(0); // 0..9
+
+  // Trade state
+  const [symbol, setSymbol] = useState("AAPL");
+  const [optionType, setOptionType] = useState<'CALL'|'PUT'>("CALL");
+  const [dte, setDte] = useState(0); // 0-2
+  const [limitPrice, setLimitPrice] = useState(2.35); // premium per contract
+  const [livePrice, setLivePrice] = useState(2.36);
+  const [allocationMode, setAllocationMode] = useState<'equal'|'proportional'|'riskDollar'>("proportional");
+  const [riskDollar, setRiskDollar] = useState(1000);
+  const [pending, setPending] = useState<any[]>([]);
+  const [logs, setLogs] = useState<{ts:string; msg:string; tone?:"info"|"warn"|"err"}[]>([]);
+
+  // Derived
+  const stepUnits = risk.fib_steps[tryIndex] * boost;
+  const totalBudget = useMemo(()=> risk.unit * stepUnits, [risk.unit, stepUnits]);
+  const priceDrift = Math.abs(livePrice - limitPrice) / (limitPrice || 1);
+  const priceGuardPass = priceDrift <= risk.price_tolerance_pct;
+
+  const addLog = (msg:string, tone?:"info"|"warn"|"err") => setLogs(x=> [{ts: now(), msg, tone}, ...x].slice(0,180));
+
+  // Weights
+  const weights = useMemo(()=>{
+    const sum = accounts.reduce((a,b)=>a + (b.equity||0), 0);
+    return Object.fromEntries(accounts.map(a=> [a.id, sum? (a.equity/sum):0 ]));
+  }, [accounts]);
+
+  type AllocRow = { id:string; name:string; equity:number; weight:number; allocDollar:number; contracts:number; estCost:number };
+  const mkRow = (a:any, allocDollar:number): AllocRow => {
+    const cost = Math.max(0, (limitPrice||0) * 100);
+    const contracts = cost>0? Math.floor((allocDollar||0) / cost) : 0;
+    const estCost = contracts * cost;
+    return { id:a.id, name:a.name, equity:a.equity, weight:(weights as any)[a.id]||0, allocDollar, contracts, estCost };
+  }
+  const simulateAlloc = (): AllocRow[] => {
+    let rows: AllocRow[] = [];
+    if (allocationMode === 'equal'){
+      const each = totalBudget / accounts.length; rows = accounts.map(a=> mkRow(a, each));
+    } else if (allocationMode === 'proportional'){
+      rows = accounts.map(a=> mkRow(a, totalBudget * (weights as any)[a.id] ));
+    } else {
+      const desired = accounts.map(a=> ({ a, alloc: Math.min(riskDollar, totalBudget)}));
+      const totalDesired = desired.reduce((s,d)=> s + d.alloc, 0);
+      const scale = totalDesired>0? (totalBudget/totalDesired): 0;
+      rows = desired.map(d=> mkRow(d.a, d.alloc * scale));
+    }
+    return rows;
+  };
+
+  const onSend = () => {
+    const rows = simulateAlloc();
+    if (!priceGuardPass){ addLog(`Price-Guard FAILED: drift ${(priceDrift*100).toFixed(2)}% > ${(risk.price_tolerance_pct*100).toFixed(2)}%`, 'err'); return; }
+    if (rows.every(r=> r.contracts===0)){ addLog('لا يوجد عقود كافية ضمن الميزانية — عدّل السعر/الميزانية', 'warn'); return; }
+
+    const slip = (livePrice - limitPrice) / (limitPrice || 1);
+    if (Math.abs(slip) > risk.slippage_max_pct){ addLog(`Slippage كبير ${(slip*100).toFixed(2)}% — الإرسال مُنع`, 'err'); return; }
+
+    const sent = rows.map(r=> ({ account: r.name, symbol, optionType, dte, limitPrice, livePrice, requested: r.contracts, filled: 0, slipPct: slip, tsSend: Date.now() })).filter(x=> x.requested>0);
+    setPending(sent);
+    addLog(`أُرسلت ${sent.length} أوامر ⇢ Alloc=$${fmt.format(totalBudget)} | Slippage ${(Math.abs(slip)*100).toFixed(2)}%`, 'info');
+  };
+  const onFillSome = () => {
+    // simulate fills & latency
+    setPending(p=> p.map(x=> ({...x, filled: Math.max(x.filled, x.requested - (Math.random()<0.1? 1:0)), tsFill: (x.tsFill||Date.now()+Math.random()*800)})));
+    addLog('تحديث تعبئة (محاكاة) — تحقق من Observability', 'info');
+  }
+  const onKill = () => { if (pending.length){ addLog(`Kill-Switch: إلغاء ${pending.length} أوامر قيد التنفيذ`, 'warn'); } setPending([]); };
+
+  // Persist
+  useEffect(()=>{ try{ localStorage.setItem('photon_accounts', JSON.stringify(accounts)); }catch{} }, [accounts]);
+  useEffect(()=>{ try{ const saved = localStorage.getItem('photon_accounts'); if(saved) setAccounts(JSON.parse(saved)); }catch{} }, []);
+
+  const rows = simulateAlloc();
+  const totalRequested = rows.reduce((s,r)=> s + r.contracts, 0);
+  const totalEstCost = rows.reduce((s,r)=> s + r.estCost, 0);
+
+  return (
+    <div className="min-h-dvh bg-gray-50">
+      <header className="px-5 py-4 border-b bg-white sticky top-0 z-30">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="h-9 w-9 rounded-xl bg-black text-white grid place-content-center font-bold">Φ</div>
+            <div>
+              <h1 className="text-lg font-semibold">Photon Trader — Options (PRO)</h1>
+              <p className="text-xs text-gray-500">Flows · Dealer · IV · Chains · Trade · Risk · Journal · Obs</p>
             </div>
-            <div className="lg:col-span-2 border rounded-xl p-4 bg-gray-50">
-              {!result? (<div className="text-gray-500 text-sm">—</div>) : (
-                <div className="space-y-4">
-                  <div className="flex items-end gap-4"><div className="text-3xl font-extrabold">{result.phase}</div><div className="text-gray-600">{i.confidence}: <span className="font-semibold">{result.score}%</span></div></div>
-                  <Block title={i.reasons}><ul className="list-disc pr-5 text-sm leading-7">{result.reasons.map((r,ix)=><li key={ix}>{r}</li>)}</ul></Block>
-                  <Block title={i.guidance}><ul className="list-disc pr-5 text-sm leading-7">{result.guidance.map((g,ix)=><li key={ix}>{g}</li>)}</ul></Block>
-                  <div className="card p-4"><div className="font-semibold mb-2">🧠 {i.tactics}</div><ul className="list-disc pr-5 text-sm leading-7"><li><b>Entry:</b> {result.tactics.entry}</li><li><b>SL:</b> {result.tactics.sl}</li><li><b>TP:</b> {result.tactics.tp}</li><li><b>Management:</b> {result.tactics.manage}</li>{(result.tactics.notes||[]).map((n,j)=>(<li key={j}>🔎 {n}</li>))}</ul></div>
-                  {img && <img alt="ref" src={img} className="w-full rounded-xl border"/>}
-                </div>
-              )}
-            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <Badge text={`Try #${tryIndex+1}`} tone="blue" />
+            <Badge text={`Budget $${fmt.format(totalBudget)}`} tone="green" />
+            <Badge text={`Boost ×${boost.toFixed(2)}`} tone="gray" />
+            <button onClick={onKill} className="px-3 py-1.5 rounded-lg bg-red-600 text-white text-sm hover:bg-red-700">KILL</button>
           </div>
         </div>
-      );
-    }
-    const Block=({title,children})=>(<div><div className="text-sm text-gray-500 mb-1">{title}</div>{children}</div>);
-    function Sel(lbl,key,input,setInput){
-      return (
-        <label className="text-sm"><div className="mb-1 text-gray-500">{lbl}</div>
-          <select value={input[key]} onChange={e=>setInput({...input,[key]:e.target.value})} className="w-full border rounded-lg p-2">
-            <option value="bull">Bullish</option><option value="bear">Bearish</option>
-          </select>
-        </label>
-      )
-    }
-    function YesNo(lbl,key,input,setInput){
-      const v = !!input[key];
-      return (<label className="text-sm"><div className="mb-1 text-gray-500">{lbl}</div>
-        <select value={v?'yes':'no'} onChange={e=>setInput({...input,[key]: e.target.value==='yes'})} className="w-full border rounded-lg p-2"><option value="no">No</option><option value="yes">Yes</option></select>
-      </label>)
-    }
-    function Opt(lbl,key,opts,input,setInput){
-      return (<label className="text-sm"><div className="mb-1 text-gray-500">{lbl}</div>
-        <select value={input[key]} onChange={e=>setInput({...input,[key]: e.target.value})} className="w-full border rounded-lg p-2">{opts.map(o=> <option key={o} value={o}>{o}</option>)}</select>
-      </label>)
-    }
+        <nav className="mt-3 flex flex-wrap gap-2 text-sm">
+          {([
+            ['overview','Overview'],['flow','Flow'],['iv','IV'],['chains','Chains'],['trade','Trade'],['risk','Risk'],['journal','Journal'],['obs','Observability']
+          ] as const).map(([key,label])=> (
+            <button key={key} onClick={()=>setTab(key as any)} className={`px-3 py-1.5 rounded-xl border ${tab===key? 'bg-black text-white border-black':'bg-white hover:bg-gray-100 border-gray-200'}`}>{label}</button>
+          ))}
+        </nav>
+      </header>
 
-    /* ================== Ladder (integrated from your tool) ================== */
-    function fib(n){ let a=1,b=1; if(n<=2) return 1; for(let i=3;i<=n;i++){ const c=a+b; a=b; b=c; } return b; }
-    function sumRBefore(k,b){ let s=0; for(let j=1;j<k;j++){ s += b*fib(j); } return s; }
-    function binom(n,k){ if(k<0||k>n) return 0; if(k===0||k===n) return 1; k=Math.min(k,n-k); let r=1; for(let i=1;i<=k;i++){ r=r*(n-(k-i))/i; } return r; }
-    function binomTail(n,p,kmin){ if(n<=0) return 0; let s=0; for(let w=kmin; w<=n; w++){ s += binom(n,w)*p**w*(1-p)**(n-w); } return s; }
+      <main className="p-5 max-w-7xl mx-auto">
+        {tab==='overview' && (
+          <Overview accounts={accounts} setAccounts={setAccounts} rows={rows} totalBudget={totalBudget} priceGuardPass={priceGuardPass} priceDrift={priceDrift} risk={risk} pending={pending} logs={logs} providers={providers} setProviders={setProviders} />
+        )}
+        {tab==='flow' && (<FlowTab />)}
+        {tab==='iv' && (<IVTab />)}
+        {tab==='chains' && (<ChainsTab />)}
+        {tab==='trade' && (
+          <TradePad
+            accounts={accounts}
+            rows={rows}
+            symbol={symbol} setSymbol={setSymbol}
+            optionType={optionType} setOptionType={setOptionType}
+            dte={dte} setDte={setDte}
+            limitPrice={limitPrice} setLimitPrice={setLimitPrice}
+            livePrice={livePrice} setLivePrice={setLivePrice}
+            allocationMode={allocationMode} setAllocationMode={setAllocationMode}
+            riskDollar={riskDollar} setRiskDollar={setRiskDollar}
+            tryIndex={tryIndex} setTryIndex={setTryIndex}
+            boost={boost} setBoost={setBoost}
+            totalBudget={totalBudget} totalRequested={totalRequested} totalEstCost={totalEstCost}
+            priceDrift={priceDrift} priceGuardPass={priceGuardPass} risk={risk}
+            onSend={onSend} onKill={onKill} onFillSome={onFillSome}
+            pending={pending}
+          />)}
+        {tab==='risk' && (<RiskConsole risk={risk} setRisk={setRisk} providers={providers} setProviders={setProviders} />)}
+        {tab==='journal' && (<JournalTab />)}
+        {tab==='obs' && (<ObservabilityTab pending={pending} />)}
+      </main>
+    </div>
+  );
+}
 
-    const LADDER_DEFAULT = { balance:100000, lev:10, price:1.10, k:7, b:50, stop:6, daycapPct:1.9, M:0, partIdx:1, winsSoFar:0, lossesSoFar:0, rule:'majority', T:500, p:0.23, autoStop:'on' };
+// ===== Overview =====
+function Overview({accounts, setAccounts, rows, totalBudget, priceGuardPass, priceDrift, risk, pending, logs, providers, setProviders}:{
+  accounts:any[]; setAccounts:Function; rows:any[]; totalBudget:number; priceGuardPass:boolean; priceDrift:number; risk:any; pending:any[]; logs:{ts:string; msg:string; tone?:string}[]; providers:any; setProviders:Function;
+}){
+  const sumEquity = accounts.reduce((s,a)=> s + (a.equity||0), 0);
+  const sumDay = accounts.reduce((s,a)=> s + (a.pnlDay||0), 0);
 
-    function LadderCard({lang,acct,setAcct}){
-      const i=t[lang];
-      const [v,setV] = useState(LS.get('ladder', LADDER_DEFAULT));
-      useEffect(()=> LS.set('ladder', v), [v]);
-
-      // autoStop enforcement
-      const stop = (v.autoStop==='on' && v.k>=9 && v.stop<10)? 10 : v.stop;
-      const Fk = fib(v.k);
-      const Rk = v.b * Fk;
-      const pipValuePerLot = 10.0; // USD-quoted approx
-      const L_req = Rk / (stop * pipValuePerLot);
-      const lotCap = (v.balance * v.lev) / (v.price * 100000);
-      const dayCap = v.daycapPct/100 * v.balance;
-      const M_by_lev = Math.max(1, Math.ceil(L_req / Math.max(1e-9, lotCap)));
-      const M_by_day = Math.max(1, Math.ceil(Rk / Math.max(1e-9, dayCap)));
-      const Mfinal = (v.M && v.M>0)? v.M: Math.max(M_by_lev, M_by_day);
-      const r = Rk / Mfinal;
-      const Lot_part = L_req / Mfinal;
-      const W_needed_majority = Math.ceil(Mfinal/2);
-      const W_needed_profit   = Math.floor(Mfinal/6)+1;
-      const L_prev = sumRBefore(v.k, v.b);
-      const W_needed_clear    = Math.max(0, Math.ceil((L_prev + v.T)/(6*r) + (Mfinal/6)));
-      const P_reset_maj_22 = binomTail(Mfinal, 0.22, W_needed_majority);
-      const P_reset_maj_25 = binomTail(Mfinal, 0.25, W_needed_majority);
-      const P_reset_maj_p  = binomTail(Mfinal, v.p,   W_needed_majority);
-
-      const partsDone = v.winsSoFar + v.lossesSoFar;
-      const partsLeft = Math.max(0, Mfinal - partsDone);
-      const winsLeftToMajority = Math.max(0, W_needed_majority - v.winsSoFar);
-      const winsLeftToProfit   = Math.max(0, W_needed_profit   - v.winsSoFar);
-      const winsLeftToClear    = Math.max(0, W_needed_clear    - v.winsSoFar);
-      const lotOK = Lot_part <= lotCap + 1e-9;
-      const dayOK = r <= dayCap + 1e-9;
-
-      const decisionAtEnd = (ruleType, W)=> ruleType==='majority'? (W>=W_needed_majority?'RESET':'ESCALATE') : ruleType==='profit'? (((6*W - Mfinal)*r > 0)?'RESET':'ESCALATE') : (((6*W - Mfinal)*r >= (L_prev + v.T))?'RESET':'ESCALATE');
-      const decisionNowIfEnd = decisionAtEnd(v.rule, v.winsSoFar);
-
-      function update(k,val){ setV(prev=> ({...prev, [k]:val})); }
-      function inc(k){ update(k, Math.max(0,(v[k]||0)+1)); }
-      function preset100(){ setV({...LADDER_DEFAULT, balance:100000, autoStop:'on', rule:'majority', p:0.23}); }
-      function preset50(){  setV({...LADDER_DEFAULT, balance:50000,  autoStop:'off', rule:'clear',    p:0.22}); }
-
-      return (
-        <div className="card p-6">
-          <h3 className="text-2xl font-semibold">🧮 {i.ladderTitle}</h3>
-          <div className="grid md:grid-cols-3 gap-3 mt-4">
-            {Num(i.balance,'balance',v,update,1000)}
-            {Num(i.lev,'lev',v,update,1)}
-            {Num(i.price,'price',v,update,0.0001)}
-            {Num(i.k,'k',v,update,1,1,10)}
-            {Num(i.b,'b',v,update,1)}
-            {Num(i.stop,'stop',v,update,0.1)}
-            {Num(i.daycap,'daycapPct',v,update,0.1)}
-            {Num(i.M,'M',v,update,1,1)}
-            {Num(i.part,'partIdx',v,update,1,1)}
-            {Num(i.W,'winsSoFar',v,update,1,0)}
-            {Num(i.L,'lossesSoFar',v,update,1,0)}
-            <label className="text-sm"><div className="mb-1 text-gray-500">{i.rule}</div>
-              <select className="w-full border rounded-lg p-2" value={v.rule} onChange={e=>update('rule', e.target.value)}>
-                <option value="majority">{i.majority} (W ≥ ⌈M/2⌉)</option>
-                <option value="profit">{i.profit} ((6W−M)·r &gt; 0)</option>
-                <option value="clear">{i.clearRule} ((6W−M)·r ≥ L_prev + T)</option>
-              </select>
-            </label>
-            {Num(i.T,'T',v,update,50)}
-            {Num(i.p,'p',v,update,0.01,0,1)}
-            <label className="text-sm"><div className="mb-1 text-gray-500">{i.autoStop}</div>
-              <select className="w-full border rounded-lg p-2" value={v.autoStop} onChange={e=>update('autoStop', e.target.value)}>
-                <option value="on">{i.on}</option>
-                <option value="off">{i.off}</option>
-              </select>
-            </label>
-          </div>
-
-          <div className="flex flex-wrap gap-2 mt-3">
-            <button className="px-3 py-2 rounded-lg border bg-black text-white" onClick={()=>setV({...v})}>{i.calc}</button>
-            <button className="px-3 py-2 rounded-lg border" onClick={preset100}>{i.preset100}</button>
-            <button className="px-3 py-2 rounded-lg border" onClick={preset50}>{i.preset50}</button>
-            <button className="px-3 py-2 rounded-lg border" onClick={()=>inc('winsSoFar')}>{i.win}</button>
-            <button className="px-3 py-2 rounded-lg border" onClick={()=>inc('lossesSoFar')}>{i.loss}</button>
-            <button className="px-3 py-2 rounded-lg border" onClick={()=>setV(prev=>({...prev, winsSoFar:0, lossesSoFar:0, partIdx:1}))}>{i.reset}</button>
-            <button className="px-3 py-2 rounded-lg border" onClick={()=>{ localStorage.removeItem('photon_ladder'); setV(LADDER_DEFAULT); }}>{i.clear}</button>
-          </div>
-
-          <div className="card p-4 mt-4">
-            <h4 className="font-semibold mb-2">{i.outputs}</h4>
-            <div className="grid md:grid-cols-2 gap-3">
-              <div><span className="kbd">Fk={Fk}</span> <span className="kbd">Rk=${fmt(Rk)}</span> <span className="kbd">Lreq={fmt(L_req)}</span></div>
-              <div><span className="kbd">{i.lotCap}≈ {fmt(lotCap)}</span> <span className="kbd">{i.dayCap}≈ ${fmt(dayCap)}</span></div>
-            </div>
-            <div className="grid md:grid-cols-2 gap-3 mt-2">
-              <div><span className="kbd">M_lev={M_by_lev}</span> <span className="kbd">M_day={M_by_day}</span> <span className="kbd">M={Mfinal}</span></div>
-              <div><span className="kbd">r/{i.perPart}= ${fmt(r)}</span> <span className="kbd">Lot/{i.perPart}= {fmt(Lot_part)}</span></div>
-            </div>
-            <div className="grid md:grid-cols-2 gap-3 mt-2">
-              <div className={`${Lot_part<=lotCap? 'text-emerald-600':'text-rose-600'}`}>اللوت/{i.perPart} {Lot_part<=lotCap? i.allowed: i.exceeded}</div>
-              <div className={`${r<=dayCap? 'text-emerald-600':'text-rose-600'}`}>مخاطرة/{i.perPart} {r<=dayCap? i.allowed: i.exceeded}</div>
-            </div>
-            <details className="text-sm text-gray-600 mt-2"><summary>🧮 {i.formulas}</summary>
-              <div className="mt-2 space-y-1">
-                <div>Lreq = Rk / (stop × $10) = {fmt(Rk)} / ({fmt(stop)} × 10) = <b>{fmt(L_req)}</b></div>
-                <div>lotCap ≈ (balance × lev) / (price × 100k) = ({fmt(v.balance)}×{fmt(v.lev)}) / ({fmt(v.price)}×100000) = <b>{fmt(lotCap)}</b></div>
-                <div>dayCap = {fmt(v.daycapPct)}% × {fmt(v.balance)} = <b>${fmt(dayCap)}</b></div>
-                <div>M_lev = ceil(Lreq/lotCap) = ceil({fmt(L_req)}/{fmt(lotCap)}) = <b>{M_by_lev}</b></div>
-                <div>M_day = ceil(Rk/dayCap) = ceil({fmt(Rk)}/{fmt(dayCap)}) = <b>{M_by_day}</b></div>
-                <div>r = Rk/M = {fmt(Rk)}/{Mfinal} = <b>${fmt(r)}</b></div>
-                <div>Lot/{i.perPart} = Lreq/M = {fmt(L_req)}/{Mfinal} = <b>{fmt(Lot_part)}</b></div>
-              </div>
-            </details>
-          </div>
-
-          <div className="card p-4 mt-4">
-            <h4 className="font-semibold mb-2">{i.decision}</h4>
-            <div className="grid md:grid-cols-3 gap-3 text-sm">
-              <div>
-                <div className="font-semibold">{i.majority}</div>
-                <div>W_needed = ⌈M/2⌉ = <b>{Math.ceil(Mfinal/2)}</b></div>
-                <div>P_reset@22% = <b>{(P_reset_maj_22*100).toFixed(1)}%</b></div>
-                <div>P_reset@25% = <b>{(P_reset_maj_25*100).toFixed(1)}%</b></div>
-                <div>P_reset@p={v.p} = <b>{(P_reset_maj_p*100).toFixed(1)}%</b></div>
-              </div>
-              <div>
-                <div className="font-semibold">{i.profit}</div>
-                <div>W_needed &gt; M/6 ⇒ <b>{Math.floor(Mfinal/6)+1}</b></div>
-                <div>صافي = (6W − M)·r</div>
-              </div>
-              <div>
-                <div className="font-semibold">{i.clearRule}</div>
-                <div>L_prev = ${fmt(L_prev)}</div>
-                <div>W_needed ≥ <b>{W_needed_clear}</b> لتحقيق (6W−M)·r ≥ L_prev + T</div>
-              </div>
-            </div>
-            <div className="mt-2 text-sm">المنجَز: W={v.winsSoFar}, L={v.lossesSoFar}, أجزاء متبقية={Math.max(0,Mfinal - (v.winsSoFar+v.lossesSoFar))}</div>
-            <div className="mt-1 text-sm">المتبقي للوصول: <span className="kbd">Maj:{winsLeftToMajority}</span> <span className="kbd">Profit:{winsLeftToProfit}</span> <span className="kbd">Clear:{winsLeftToClear}</span></div>
-            <div className="mt-2"><span className="kbd">{i.nowDecision}: <b>{decisionNowIfEnd}</b></span></div>
-          </div>
-
-          <div className="card p-4 mt-4">
-            <h4 className="font-semibold mb-2">{i.tips}</h4>
-            <ul className="list-disc pr-5 text-sm leading-7">
-              <li>100k: k=1..6 ⇒ M=1 (6pip). k=7..8 ⇒ M=2 (6pip). k=9 ⇒ M=2 (10pip). k=10 ⇒ M=4 (10pip).</li>
-              <li>الحد اليومي إرشادي ضمن تسلسل فيبو—التزم بقوانين الشركة.</li>
-              <li>OCO: إلغاء باقي الأوامر عند التفعيل.</li>
-            </ul>
-          </div>
+  return (
+    <div className="grid grid-cols-12 gap-4">
+      <Card className="col-span-12" title="ملخص سريع">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <KP label="إجمالي رأس المال" value={`$${fmt.format(sumEquity)}`} />
+          <KP label="ربح/خسارة اليوم" value={`$${fmt.format(sumDay)}`} tone={sumDay>=0? 'green':'red'} />
+          <KP label="ميزانية الخطوة الحالية" value={`$${fmt.format(totalBudget)}`} />
+          <KP label="Price‑Guard" value={priceGuardPass? 'PASS':'BLOCK'} tone={priceGuardPass? 'green':'red'} hint={`drift ${(priceDrift*100).toFixed(2)}% · tol ${(risk.price_tolerance_pct*100).toFixed(2)}%`} />
         </div>
-      );
-    }
+      </Card>
 
-    const Num = (label,key,v,update,step=1,min=null,max=null)=> (
-      <label className="text-sm"><div className="mb-1 text-gray-500">{label}</div>
-        <input type="number" step={step} min={min??undefined} max={max??undefined} value={v[key]} onChange={e=>{
-          const val = e.target.value===''? 0 : (step%1? parseFloat(e.target.value): parseInt(e.target.value));
-          update(key, Number.isFinite(val)? val: 0);
-        }} className="w-full border rounded-lg p-2"/>
-      </label>
-    );
-
-    /* ================== News (same as v3.1) ================== */
-    function NewsCard({lang}){
-      const i=t[lang];
-      const [endpoint,setEndpoint] = useState(LS.get('news_endpoint',''));
-      const [items,setItems] = useState([]);
-      const [status,setStatus] = useState('idle');
-      useEffect(()=>{ if(endpoint){ sync(); } else { seed(); } },[]);
-      function seed(){ const s=[ {title:'CPI (USD)', time:new Date().toISOString(), impact:'high'}, {title:'BoE Speech', time:new Date(Date.now()+86400000).toISOString(), impact:'med'}, {title:'NFP (USD)', time:new Date(Date.now()+2*86400000).toISOString(), impact:'high'} ]; setItems(s); }
-      async function sync(){ setStatus('loading'); try{ const url = withWindow(endpoint); const r = await fetch(url); const j = await r.json(); setItems(mapExternal(j)); setStatus('ok'); } catch(e){ seed(); setStatus('fallback'); } }
-      function withWindow(url){ const from=new Date(); from.setHours(0,0,0,0); const to=new Date(from.getTime()+3*86400000); const qs=`from=${from.toISOString()}&to=${to.toISOString()}&symbols=GBP,USD,JPY`; return url.includes('?')? `${url}&${qs}`:`${url}?${qs}`; }
-      function mapExternal(data){ const arr= Array.isArray(data)? data: (Array.isArray(data?.events)? data.events: []); return arr.map(ev=>({ title: ev.title||ev.text||ev.name||'Event', time: ev.time||ev.datetime||ev.when||new Date().toISOString(), impact: (ev.impact||ev.importance)>=3?'high':(ev.impact||ev.importance)>=2?'med':'low' })).sort((a,b)=> new Date(a.time)-new Date(b.time)); }
-      const badge=(imp)=>{ const map={low:'bg-green-100 text-green-700', med:'bg-orange-100 text-orange-700', high:'bg-red-100 text-red-700'}; const emoji={low:'🟢', med:'🟠', high:'🔴'}; return <span className={`px-2 py-0.5 rounded ${map[imp]}`}>{emoji[imp]} {imp}</span> };
-      return (
-        <div className="card p-5">
-          <div className="flex items-center justify-between"><h3 className="font-semibold">🗞️ {i.news}</h3><div className="flex items-center gap-2"><input className="border rounded-lg p-2 w-72" placeholder={i.setEndpoint} value={endpoint} onChange={e=>setEndpoint(e.target.value)} /><button className="px-3 py-2 rounded-lg border" onClick={()=>{ LS.set('news_endpoint', endpoint); sync(); }}>{i.syncNow}</button></div></div>
-          <div className="text-xs text-gray-500 mt-1">{i.endpointHint} {status==='fallback' && '— فشل الجلب، استخدمنا عيّنة محلية.'}</div>
-          <div className="mt-3 space-y-2 max-h-72 overflow-auto pr-1">
-            {items.map((it,idx)=> (
-              <div key={idx} className="flex items-center justify-between border rounded-xl p-3 bg-white">
-                <div className="flex items-center gap-3">{badge(it.impact)}<div><div className="font-medium">{it.title}</div><div className="text-xs text-gray-500">{new Date(it.time).toLocaleString()}</div></div></div>
-                <div className="text-2xl">{it.impact==='high'? '⚡': it.impact==='med'? '⚠️':'✅'}</div>
-              </div>
+      <Card className="col-span-12 lg:col-span-8" title="المحافظ">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-left text-gray-500">
+              <th className="py-2">المحفظة</th>
+              <th>Equity</th>
+              <th>ربح/خسارة اليوم</th>
+              <th className="text-right">وزن التخصيص</th>
+            </tr>
+          </thead>
+          <tbody>
+            {accounts.map((a,i)=> (
+              <tr key={a.id} className="border-t">
+                <td className="py-2 flex items-center gap-2"><span className="text-gray-700 font-medium">{a.name}</span></td>
+                <td>
+                  <input type="number" value={a.equity}
+                    onChange={e=>{ const v = Number(e.target.value||0); const copy = [...accounts]; copy[i] = {...copy[i], equity:v}; setAccounts(copy); }}
+                    className="w-28 px-2 py-1 rounded border" />
+                </td>
+                <td className={a.pnlDay>=0? 'text-green-600':'text-red-600'}>{fmt.format(a.pnlDay)}</td>
+                <td className="text-right text-gray-500">{pct((rows.find(r=> r.id===a.id)?.weight)||0)}</td>
+              </tr>
             ))}
+          </tbody>
+        </table>
+      </Card>
+
+      <Card className="col-span-12 lg:col-span-4" title="التنفيذ الحالي" right={<Badge text={`${pending.length} pending`} tone={pending.length? 'blue':'gray'} />}>
+        <div className="h-48 overflow-auto text-sm">
+          {pending.length===0 && <div className="text-gray-500">لا يوجد أوامر قيد التنفيذ.</div>}
+          {pending.map((p,i)=> (
+            <div key={i} className="border-b py-2">
+              <div className="flex items-center justify-between">
+                <div className="font-medium">{p.account}</div>
+                <Badge text={`${p.filled}/${p.requested} filled`} tone={p.filled? 'green':'red'} />
+              </div>
+              <div className="text-gray-600">{p.symbol} {p.optionType} · DTE {p.dte} · {p.limitPrice} → {p.livePrice}</div>
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      <Card className="col-span-12 lg:col-span-6" title="مزوّدو البيانات (Config)">
+        <div className="grid grid-cols-2 gap-3 text-sm">
+          {Object.entries(providers).map(([k,v]:any)=> (
+            <div key={k} className="flex items-center justify-between gap-2 border rounded-xl p-2">
+              <div className="grid text-xs">
+                <div className="font-medium">{k}</div>
+                <div className="text-gray-500">{v.enabled? 'Enabled':'Disabled'}</div>
+              </div>
+              <div className="flex items-center gap-2">
+                <input value={v.apiKey} onChange={e=>setProviders((p:any)=> ({...p, [k]: {...p[k], apiKey: e.target.value}}))} className="px-2 py-1 rounded border" placeholder="API Key" />
+                <button onClick={()=>setProviders((p:any)=> ({...p, [k]: {...p[k], enabled: !p[k].enabled}}))} className={`px-2 py-1 rounded ${v.enabled? 'bg-green-600 text-white':'bg-gray-200 text-gray-700'}`}>{v.enabled? 'On':'Off'}</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      <Card className="col-span-12 lg:col-span-6" title="السجل">
+        <div className="h-40 overflow-auto text-sm">
+          {logs.length===0 && <div className="text-gray-500">لا يوجد أحداث بعد.</div>}
+          {logs.map((l,i)=> (
+            <div key={i} className="flex items-center gap-3 py-1">
+              <span className={`text-[10px] px-1.5 py-0.5 rounded ${l.tone==='err'?'bg-red-100 text-red-700': l.tone==='warn'?'bg-yellow-100 text-yellow-700':'bg-gray-100 text-gray-700'}`}>{l.ts}</span>
+              <div className="text-gray-800">{l.msg}</div>
+            </div>
+          ))}
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+// ===== Flow & Dealer =====
+function FlowTab(){
+  return (
+    <div className="grid grid-cols-12 gap-4">
+      <Card className="col-span-12 lg:col-span-7" title="Unusual Options — Blocks & Sweeps">
+        <div className="overflow-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-gray-500">
+                <th className="py-2">Time</th><th>Type</th><th>Symbol</th><th>Side</th><th>Size</th><th>Premium</th><th>Δ</th><th>Note</th>
+              </tr>
+            </thead>
+            <tbody>
+              {demoFlows.map((f,i)=>(
+                <tr key={i} className="border-t">
+                  <td className="py-2">{f.ts}</td><td>{f.type}</td><td>{f.symbol}</td><td>{f.side}</td>
+                  <td>{fmt.format(f.size)}</td><td>${fmt.format(f.prem)}</td><td>{(f.delta>0?'+':'')+f.delta.toFixed(2)}</td><td className="text-gray-600">{f.note}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
+      <Card className="col-span-12 lg:col-span-5" title="Dealer GEX Map (Strike vs GEX)">
+        <div className="h-64">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={demoGEX}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="strike" /><YAxis /><Tooltip />
+              <Bar dataKey="gex" />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+// ===== IV & Surface =====
+function IVTab(){
+  return (
+    <div className="grid grid-cols-12 gap-4">
+      <Card className="col-span-12 lg:col-span-6" title="Term Structure (IV by DTE)">
+        <div className="h-64">
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={demoTerm}>
+              <defs>
+                <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopOpacity={0.3}/>
+                  <stop offset="95%" stopOpacity={0}/>
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="dte" /><YAxis tickFormatter={(v)=> (v*100).toFixed(0)+'%'} />
+              <Tooltip formatter={(v:any)=> (v*100).toFixed(2)+'%'} />
+              <Area type="monotone" dataKey="iv" strokeWidth={2} fillOpacity={1} fill="url(#g)" />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+      </Card>
+
+      <Card className="col-span-12 lg:col-span-6" title="IV Surface (table mock)">
+        <div className="overflow-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-gray-500">
+                <th className="py-2">Strike</th>
+                <th>0D</th><th>1D</th><th>2D</th><th>1W</th><th>2W</th><th>1M</th>
+              </tr>
+            </thead>
+            <tbody>
+              {demoSurface.map((r,i)=> (
+                <tr key={i} className="border-t">
+                  <td className="py-2">{r.strike}</td>
+                  <td>{pct(r.m0)}</td><td>{pct(r.m1)}</td><td>{pct(r.m2)}</td><td>{pct(r.w1)}</td><td>{pct(r.w2)}</td><td>{pct(r.mth1)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+// ===== Chains & Greeks =====
+function ChainsTab(){
+  const [dte, setDte] = useState(0);
+  const [deltaMin, setDeltaMin] = useState(0.2);
+  const [deltaMax, setDeltaMax] = useState(0.45);
+  const filtered = demoChain.filter(x=> x.delta>=deltaMin && x.delta<=deltaMax);
+
+  return (
+    <div className="grid grid-cols-12 gap-4">
+      <Card className="col-span-12" title="Filters">
+        <div className="flex flex-wrap items-end gap-3 text-sm">
+          <Labeled label="DTE"><select value={dte} onChange={e=>setDte(Number(e.target.value))} className="px-2 py-1 rounded border"><option value={0}>0</option><option value={1}>1</option><option value={2}>2</option></select></Labeled>
+          <Labeled label="Δ min"><input type="number" step="0.01" value={deltaMin} onChange={e=>setDeltaMin(Number(e.target.value))} className="px-2 py-1 rounded border w-24"/></Labeled>
+          <Labeled label="Δ max"><input type="number" step="0.01" value={deltaMax} onChange={e=>setDeltaMax(Number(e.target.value))} className="px-2 py-1 rounded border w-24"/></Labeled>
+        </div>
+      </Card>
+
+      <Card className="col-span-12" title="Option Chain (Δ/Γ/Θ/ν)">
+        <div className="overflow-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-gray-500">
+                <th className="py-2">Strike</th><th>Bid</th><th>Ask</th><th>Vol</th><th>OI</th><th>IV</th><th>Δ</th><th>Γ</th><th>Θ</th><th>ν</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((r,i)=> (
+                <tr key={i} className="border-t">
+                  <td className="py-2">{r.strike}</td><td>{r.bid}</td><td>{r.ask}</td><td>{r.vol}</td><td>{r.oi}</td>
+                  <td>{r.iv}</td><td>{r.delta}</td><td>{r.gamma}</td><td>{r.theta}</td><td>{r.vega}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+// ===== Trade Pad =====
+function TradePad({
+  accounts, rows,
+  symbol, setSymbol, optionType, setOptionType, dte, setDte,
+  limitPrice, setLimitPrice, livePrice, setLivePrice,
+  allocationMode, setAllocationMode, riskDollar, setRiskDollar,
+  tryIndex, setTryIndex, boost, setBoost,
+  totalBudget, totalRequested, totalEstCost,
+  priceDrift, priceGuardPass, risk,
+  onSend, onKill, onFillSome, pending
+}:{
+  accounts:any[]; rows:any[];
+  symbol:string; setSymbol:Function;
+  optionType:'CALL'|'PUT'; setOptionType:Function;
+  dte:number; setDte:Function;
+  limitPrice:number; setLimitPrice:Function;
+  livePrice:number; setLivePrice:Function;
+  allocationMode:'equal'|'proportional'|'riskDollar'; setAllocationMode:Function;
+  riskDollar:number; setRiskDollar:Function;
+  tryIndex:number; setTryIndex:Function;
+  boost:1|1.25|1.5; setBoost:Function;
+  totalBudget:number; totalRequested:number; totalEstCost:number;
+  priceDrift:number; priceGuardPass:boolean; risk:any;
+  onSend:()=>void; onKill:()=>void; onFillSome:()=>void; pending:any[];
+}){
+  return (
+    <div className="grid grid-cols-12 gap-4">
+      <Card className="col-span-12" title="لوحة التنفيذ (Trade Pad)">
+        <div className="grid grid-cols-12 gap-3">
+          <div className="col-span-12 md:col-span-8 grid grid-cols-2 md:grid-cols-4 gap-3">
+            <Labeled label="Symbol"><input value={symbol} onChange={e=>setSymbol(e.target.value.toUpperCase())} className="w-full px-2 py-1 rounded border" /></Labeled>
+            <Labeled label="Type"><select value={optionType} onChange={e=>setOptionType(e.target.value as any)} className="w-full px-2 py-1 rounded border"><option>CALL</option><option>PUT</option></select></Labeled>
+            <Labeled label="DTE"><select value={dte} onChange={e=>setDte(Number(e.target.value))} className="w-full px-2 py-1 rounded border"><option value={0}>0</option><option value={1}>1</option><option value={2}>2</option></select></Labeled>
+            <Labeled label="Limit Premium ($)"><input type="number" step="0.01" value={limitPrice} onChange={e=>setLimitPrice(Number(e.target.value||0))} className="w-full px-2 py-1 rounded border" /></Labeled>
+            <Labeled label="Live Premium ($)"><input type="number" step="0.01" value={livePrice} onChange={e=>setLivePrice(Number(e.target.value||0))} className="w-full px-2 py-1 rounded border" /></Labeled>
+            <Labeled label="Allocation Mode"><select value={allocationMode} onChange={e=>setAllocationMode(e.target.value as any)} className="w-full px-2 py-1 rounded border"><option value="proportional">Proportional</option><option value="equal">Equal</option><option value="riskDollar">Risk-Dollar</option></select></Labeled>
+            {allocationMode==='riskDollar' && (<Labeled label="Risk $/Account"><input type="number" value={riskDollar} onChange={e=>setRiskDollar(Number(e.target.value||0))} className="w-full px-2 py-1 rounded border" /></Labeled>)}
+            <Labeled label="Try #"><select value={tryIndex} onChange={e=>setTryIndex(Number(e.target.value))} className="w-full px-2 py-1 rounded border">{Array.from({length: 10}).map((_,i)=> <option key={i} value={i}>{i+1}</option>)}</select></Labeled>
+            <Labeled label="Boost"><select value={boost} onChange={e=>setBoost(Number(e.target.value) as any)} className="w-full px-2 py-1 rounded border"><option value={1}>×1.00</option><option value={1.25}>×1.25</option><option value={1.5}>×1.50</option></select></Labeled>
+          </div>
+
+          <div className="col-span-12 md:col-span-4 grid grid-cols-2 gap-3">
+            <KP label="Budget (Step)" value={`$${fmt.format(totalBudget)}`} />
+            <KP label="Contracts (req.)" value={`${fmt.format(totalRequested)}`} />
+            <KP label="Est. Cost" value={`$${fmt.format(totalEstCost)}`} />
+            <KP label="Price‑Guard" value={priceGuardPass? 'PASS':'BLOCK'} tone={priceGuardPass? 'green':'red'} hint={`drift ${(priceDrift*100).toFixed(2)}% ≤ ${(risk.price_tolerance_pct*100).toFixed(2)}%`} />
           </div>
         </div>
-      );
-    }
 
-    /* ================== App ================== */
-    function App(){
-      const [lang,setLang] = useState(LS.get('lang','ar'));
-      useEffect(()=>{ document.documentElement.dir = lang==='ar'? 'rtl':'ltr'; LS.set('lang', lang); },[lang]);
-      const [accounts,setAccounts] = useState(LS.get('accounts', defaultAccounts));
-      const [acct,setAcct] = useState(LS.get('active_acct', accounts[0]));
-      useEffect(()=>{ LS.set('accounts', accounts); },[accounts]);
-      useEffect(()=>{ LS.set('active_acct', acct); },[acct]);
-      const [tab,setTab] = useState(LS.get('tab','phase'));
-      useEffect(()=> LS.set('tab', tab), [tab]);
-
-      return (
-        <div className="max-w-7xl mx-auto p-4 space-y-4">
-          <TopBar lang={lang} setLang={setLang} acct={acct} setAcct={setAcct} tab={tab} setTab={setTab}/>
-          {tab==='phase' && <PhaseHelperCard lang={lang}/>} 
-          {tab==='ladder' && <LadderCard lang={lang} acct={acct} setAcct={(a)=>{ setAcct(a); setAccounts(prev=> prev.map(x=> x.id===a.id? a: x)); }}/>} 
-          {tab==='account' && <AccountCard lang={lang} acct={acct}/>} 
-          {tab==='news' && <NewsCard lang={lang}/>} 
-          <footer className="text-center text-xs text-gray-400 py-8">© Photon Architect — LC‑2A Coach · v3.2 (Integrated)</footer>
+        <div className="mt-4 overflow-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-gray-500">
+                <th className="py-2">المحفظة</th><th>Equity</th><th>Weight</th><th>Alloc $</th><th>Contracts</th><th className="text-right">Est. Cost</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r:any)=> (
+                <tr key={r.id} className="border-t">
+                  <td className="py-2">{r.name}</td>
+                  <td>{fmt.format(r.equity)}</td>
+                  <td className="text-gray-500">{pct(r.weight||0)}</td>
+                  <td>${fmt.format(r.allocDollar||0)}</td>
+                  <td className="font-medium">{r.contracts}</td>
+                  <td className="text-right">${fmt.format(r.estCost)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
-      );
-    }
 
-    ReactDOM.createRoot(document.getElementById('app')).render(<App/>);
-  </script>
-</body>
-</html>
+        <div className="flex items-center gap-3 mt-4">
+          <button onClick={onSend} className="px-4 py-2 rounded-xl bg-black text-white text-sm hover:bg-gray-900">Send Orders</button>
+          <button onClick={onFillSome} className="px-3 py-2 rounded-xl bg-blue-600 text-white text-sm hover:bg-blue-700">Mock Fill</button>
+          <button onClick={onKill} className="px-3 py-2 rounded-xl bg-red-600 text-white text-sm hover:bg-red-700">Kill</button>
+          <div className="text-xs text-gray-500">Hints: Enter إرسال · F محاكاة تعبئة · Esc إلغاء</div>
+        </div>
+      </Card>
+
+      <Card className="col-span-12" title="أوامر قيد التنفيذ">
+        <div className="overflow-auto text-sm">
+          {pending.length===0 && <div className="text-gray-500">لا يوجد أوامر.</div>}
+          {pending.map((p,i)=> (
+            <div key={i} className="border-b py-2 flex items-center justify-between">
+              <div>
+                <div className="font-medium">{p.account} — {p.symbol} {p.optionType} · DTE {p.dte}</div>
+                <div className="text-gray-600 text-xs">{p.requested} req · {p.filled||0} filled · slip {(Math.abs(p.slipPct)*100).toFixed(2)}%</div>
+              </div>
+              <Badge text={p.filled? 'FILLED':'PENDING'} tone={p.filled? 'green':'yellow'} />
+            </div>
+          ))}
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+// ===== Risk Console + Providers =====
+function RiskConsole({risk, setRisk, providers, setProviders}:{risk:any; setRisk:Function; providers:any; setProviders:Function}){
+  const [loc, setLoc] = useState(JSON.stringify(risk, null, 2));
+  useEffect(()=>{ setLoc(JSON.stringify(risk, null, 2)); }, [risk]);
+  const save = () => { try { const obj = JSON.parse(loc); setRisk(obj); } catch { alert('JSON غير صالح'); } };
+
+  return (
+    <div className="grid grid-cols-12 gap-4">
+      <Card className="col-span-12 lg:col-span-7" title="Risk Engine — JSON">
+        <textarea value={loc} onChange={e=>setLoc(e.target.value)} className="w-full h-96 font-mono text-xs p-3 rounded-xl border" />
+        <div className="mt-3 flex items-center gap-3">
+          <button onClick={save} className="px-4 py-2 rounded-xl bg-black text-white text-sm hover:bg-gray-900">Save</button>
+          <span className="text-xs text-gray-500">عدّل الإعدادات والتسامح والحدود حسب يومك.</span>
+        </div>
+      </Card>
+
+      <Card className="col-span-12 lg:col-span-5" title="موفّري البيانات (API Keys)">
+        <div className="grid gap-2 text-sm">
+          {Object.entries(providers).map(([k,v]:any)=> (
+            <div key={k} className="flex items-center justify-between gap-2 border rounded-xl p-2">
+              <div className="grid text-xs"><div className="font-medium">{k}</div><div className="text-gray-500">{v.enabled? 'Enabled':'Disabled'}</div></div>
+              <div className="flex items-center gap-2">
+                <input value={v.apiKey} onChange={e=>setProviders((p:any)=> ({...p, [k]: {...p[k], apiKey: e.target.value}}))} className="px-2 py-1 rounded border" placeholder="API Key" />
+                <button onClick={()=>setProviders((p:any)=> ({...p, [k]: {...p[k], enabled: !p[k].enabled}}))} className={`px-2 py-1 rounded ${v.enabled? 'bg-green-600 text-white':'bg-gray-200 text-gray-700'}`}>{v.enabled? 'On':'Off'}</button>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="text-[11px] text-gray-500 mt-2">نقاط الربط المقترحة: REST لطلبات الدُفعات · WebSockets للتيارات اللحظية · Failover لمزوّد احتياطي.</div>
+      </Card>
+
+      <Card className="col-span-12" title="قواعد التشغيل (ملخص)">
+        <ul className="text-sm list-disc pl-5 space-y-1 text-gray-700">
+          <li>Daily Loss ≤ {(risk.loss_limits.daily_pct*100).toFixed(1)}% · Weekly ≤ {(risk.loss_limits.weekly_pct*100).toFixed(1)}%</li>
+          <li>Target R = {risk.target_R} · Profit Withdraw = {(risk.profit_withdraw_pct*100).toFixed(0)}%</li>
+          <li>Cap Steps: ×1.00 ≤ {risk.daily_cap_step_max.x1_0}, ×1.25 ≤ {risk.daily_cap_step_max.x1_25}, ×1.50 ≤ {risk.daily_cap_step_max.x1_5}</li>
+          <li>Price‑Guard ≤ {(risk.price_tolerance_pct*100).toFixed(2)}% · Slippage ≤ {(risk.slippage_max_pct*100).toFixed(2)}%</li>
+          <li>Cool‑Down بعد خسارتين: {risk.cool_down_on_2_losses_min} دقيقة</li>
+        </ul>
+      </Card>
+    </div>
+  );
+}
+
+// ===== Journal =====
+function JournalTab(){
+  const [items, setItems] = useState<{ts:string; why:string; what:string; result:string; lesson:string}[]>([]);
+  const [why, setWhy] = useState("");
+  const [what, setWhat] = useState("");
+  const [result, setResult] = useState("");
+  const [lesson, setLesson] = useState("");
+
+  const add = () => {
+    if(!why || !what) return;
+    setItems(i=> [{ts: now(), why, what, result, lesson}, ...i]);
+    setWhy(""); setWhat(""); setResult(""); setLesson("");
+  };
+
+  return (
+    <div className="grid grid-cols-12 gap-4">
+      <Card className="col-span-12" title="Journal AI (يدوي الآن — يربط Notion لاحقًا)">
+        <div className="grid md:grid-cols-4 gap-3 text-sm">
+          <Labeled label="Why (السبب)"><input value={why} onChange={e=>setWhy(e.target.value)} className="w-full px-2 py-1 rounded border"/></Labeled>
+          <Labeled label="What (الإجراء)"><input value={what} onChange={e=>setWhat(e.target.value)} className="w-full px-2 py-1 rounded border"/></Labeled>
+          <Labeled label="Result (W/L)"><input value={result} onChange={e=>setResult(e.target.value)} className="w-full px-2 py-1 rounded border"/></Labeled>
+          <Labeled label="Lesson (الدرس)"><input value={lesson} onChange={e=>setLesson(e.target.value)} className="w-full px-2 py-1 rounded border"/></Labeled>
+        </div>
+        <div className="mt-3"><button onClick={add} className="px-4 py-2 rounded-xl bg-black text-white text-sm hover:bg-gray-900">Add Note</button></div>
+      </Card>
+
+      <Card className="col-span-12" title="السجل">
+        <div className="overflow-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-gray-500"><th className="py-2">Time</th><th>Why</th><th>What</th><th>Result</th><th>Lesson</th></tr>
+            </thead>
+            <tbody>
+              {items.map((r,i)=> (
+                <tr key={i} className="border-t"><td className="py-2">{r.ts}</td><td>{r.why}</td><td>{r.what}</td><td>{r.result}</td><td className="text-gray-600">{r.lesson}</td></tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+// ===== Observability =====
+function ObservabilityTab({pending}:{pending:any[]}){
+  // KPIs من المحاكاة
+  const count = pending.length;
+  const filled = pending.filter(p=> p.filled>0).length;
+  const fillRatio = count? filled/count: 0;
+  const avgSlip = count? (pending.reduce((s,p)=> s + Math.abs(p.slipPct||0), 0)/count): 0;
+  const avgLatencyMs = count? (pending.reduce((s,p)=> s + Math.max(0,(p.tsFill||Date.now()) - (p.tsSend||Date.now())),0)/count): 0;
+
+  return (
+    <div className="grid grid-cols-12 gap-4">
+      <Card className="col-span-12" title="KPIs">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <KP label="Orders" value={`${count}`} />
+          <KP label="Fill‑ratio" value={pct(fillRatio)} tone={fillRatio>=0.95? 'green':'red'} />
+          <KP label="Avg Slippage" value={pct(avgSlip)} tone={avgSlip<=0.003? 'green':'red'} />
+          <KP label="Avg Time‑to‑Fill" value={`${avgLatencyMs.toFixed(0)} ms`} />
+        </div>
+      </Card>
+
+      <Card className="col-span-12" title="Slippage Distribution (abs)">
+        <div className="h-64">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={pending.map((p,i)=> ({i, s: Math.abs(p.slipPct||0)}))}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="i" /><YAxis tickFormatter={(v)=> (v*100).toFixed(1)+'%'} />
+              <Tooltip formatter={(v:any)=> (v*100).toFixed(2)+'%'} />
+              <Bar dataKey="s" />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </Card>
+    </div>
+  );
+}
