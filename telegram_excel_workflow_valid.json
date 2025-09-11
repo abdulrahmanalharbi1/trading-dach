@@ -1,0 +1,171 @@
+{
+  "name": "Telegram CSV → Excel (no DataStore)",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": ["message"],
+        "download": true
+      },
+      "id": "TelegramTrigger",
+      "name": "Telegram Trigger",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1,
+      "position": [200, 300],
+      "credentials": {
+        "telegramApi": {
+          "id": "__REPLACE__",
+          "name": "Telegram BOT"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "binaryPropertyName": "document",
+        "options": {
+          "headerRow": true
+        }
+      },
+      "id": "CSVtoJSON",
+      "name": "CSV → JSON",
+      "type": "n8n-nodes-base.spreadsheetFile",
+      "typeVersion": 1,
+      "position": [420, 300]
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "items"
+      },
+      "id": "SplitItems",
+      "name": "Split into Items",
+      "type": "n8n-nodes-base.itemLists",
+      "typeVersion": 1,
+      "position": [620, 300]
+    },
+    {
+      "parameters": {
+        "keepOnlySet": true,
+        "values": {
+          "string": [
+            { "name": "Symbol", "value": "={{$json.Symbol || $json.symbol}}" },
+            { "name": "Side", "value": "={{$json.Side || $json.side}}" },
+            { "name": "Note", "value": "={{$json.Note || ''}}" },
+            { "name": "UpdatedAt", "value": "={{$now}}" }
+          ],
+          "number": [
+            { "name": "Strike", "value": "={{+$json.Strike || +$json.strike}}" },
+            { "name": "Premium", "value": "={{+$json.Premium || +$json.premium}}" },
+            { "name": "RiskPercent", "value": "={{+$json.RiskPercent || 0}}" },
+            { "name": "RiskDollars", "value": "={{+$json.RiskDollars || 0}}" },
+            { "name": "Contracts", "value": "={{+$json.Contracts || 0}}" },
+            { "name": "LastClose", "value": "={{+$json.LastClose || 0}}" },
+            { "name": "ATR14", "value": "={{+$json.ATR14 || 0}}" }
+          ],
+          "string2": [
+            { "name": "Expiry", "value": "={{$json.Expiry || $json.expiry}}" },
+            { "name": "EntrySignal", "value": "={{$json.EntrySignal || ''}}" },
+            { "name": "SL", "value": "={{$json.SL || ''}}" },
+            { "name": "TP", "value": "={{$json.TP || ''}}" }
+          ]
+        }
+      },
+      "id": "SetNode",
+      "name": "Set",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 2,
+      "position": [820, 300]
+    },
+    {
+      "parameters": {
+        "operation": "write",
+        "options": {
+          "sheetName": "RawData",
+          "fileFormat": "xlsx",
+          "useHeaders": true,
+          "writeMode": "append"
+        },
+        "binaryData": false,
+        "data": "={{$json}}",
+        "fileName": "/data/trading_options_template.xlsx"
+      },
+      "id": "WriteFile",
+      "name": "Spreadsheet File (Write)",
+      "type": "n8n-nodes-base.spreadsheetFile",
+      "typeVersion": 1,
+      "position": [1040, 300]
+    },
+    {
+      "parameters": {
+        "chatId": "={{$json.chat?.id || $json.message?.chat?.id || '__REPLACE_CHAT_ID__'}}",
+        "text": "✅ تم تسجيل الصف {{ $json.Symbol || '' }} بنجاح في الإكسل."
+      },
+      "id": "TelegramSend",
+      "name": "Telegram → Send",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [1260, 300],
+      "credentials": {
+        "telegramApi": {
+          "id": "__REPLACE__",
+          "name": "Telegram BOT"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Telegram Trigger": {
+      "main": [
+        [
+          {
+            "node": "CSV → JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CSV → JSON": {
+      "main": [
+        [
+          {
+            "node": "Split into Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split into Items": {
+      "main": [
+        [
+          {
+            "node": "Set",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set": {
+      "main": [
+        [
+          {
+            "node": "Spreadsheet File (Write)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Spreadsheet File (Write)": {
+      "main": [
+        [
+          {
+            "node": "Telegram → Send",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}
